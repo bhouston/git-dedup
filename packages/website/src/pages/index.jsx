@@ -58,8 +58,7 @@ git log --oneline`}</code>
             </pre>
             <p className={styles.performance}>
               For large repositories, reusing a populated store can turn a{' '}
-              <strong>100+ second fresh clone into a near-instant repeat checkout</strong>. The first clone fills the
-              mirror; actual times depend on remote updates, disk speed, and the files Git needs to check out.
+              <strong>100+ second fresh clone into a near-instant repeat checkout</strong>.
             </p>
             <div className={styles.actions}>
               <Link className={styles.primary} to="/docs">

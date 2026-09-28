@@ -464,7 +464,7 @@ export function createGitx(options: GitxOptions = {}) {
   }
 
   async function storePath(): Promise<string> {
-    return canonicalPath(resolve(cwd, expandHome(env.GITX_STORE || (await config('gitx.store')) || '~/.cache/gitx')));
+    return canonicalPath(resolve(cwd, expandHome(env.GITX_STORE || '~/.cache/gitx')));
   }
 
   async function linkMode(): Promise<'auto' | 'hardlink' | 'copy' | 'reflink'> {
@@ -819,9 +819,9 @@ export function createGitx(options: GitxOptions = {}) {
     };
   }
 
-  async function refresh(): Promise<{ refreshed: number }> {
+  async function fetch(): Promise<{ fetched: number }> {
     const root = await storePath();
-    let refreshed = 0;
+    let fetched = 0;
     for (const mirror of await findMirrors(join(root, 'mirrors'))) {
       const key = mirror.slice(join(root, 'mirrors').length + 1, -4);
       await withLock(root, key, async () => {
@@ -835,10 +835,10 @@ export function createGitx(options: GitxOptions = {}) {
           '+refs/tags/*:refs/tags/*',
         ]);
         await checked(['-C', mirror, 'repack', '-d', '--geometric=2']);
-        refreshed++;
+        fetched++;
       });
     }
-    return { refreshed };
+    return { fetched };
   }
 
   async function gc(unused = '30d'): Promise<{ removed: number }> {
@@ -858,28 +858,6 @@ export function createGitx(options: GitxOptions = {}) {
       });
     }
     return { removed };
-  }
-
-  async function clear(): Promise<void> {
-    const root = await storePath();
-    if (!(await isPresent(root))) return;
-    await lockDirectory(storeLock(root), async () => {
-      if (!(await isPresent(root))) return;
-      const marker = await readFile(join(root, '.gitx-store'), 'utf8').catch(() => '');
-      if (marker !== 'gitx-store-v1\n') throw new Error(`Refusing to clear unrecognized store: ${root}`);
-      const entries = await readdir(root);
-      if (entries.some((e) => !['.gitx-store', 'mirrors', 'locks', 'tmp', 'lfs'].includes(e)))
-        throw new Error(`Refusing to clear store containing unrelated files: ${root}`);
-      await rm(root, { recursive: true, force: true });
-    });
-  }
-
-  async function setStore(path: string): Promise<string> {
-    const absolute = await canonicalPath(resolve(cwd, expandHome(path)));
-    await lockDirectory(storeLock(absolute), () => initializeStore(absolute));
-    await checked(['config', '--global', 'gitx.store', absolute]);
-    await checked(['config', '--global', 'lfs.storage', join(absolute, 'lfs')]);
-    return absolute;
   }
 
   async function doctor(): Promise<DoctorResult> {
@@ -911,8 +889,6 @@ export function createGitx(options: GitxOptions = {}) {
       checks.push({ name: 'reflink', ok: reflink, detail: reflink ? 'Supported' : 'Unavailable' });
       const binary = await gitPath();
       checks.push({ name: 'git', ok: true, detail: `${binary}: ${await checked(['--version'])}` });
-      const lfs = await config('lfs.storage');
-      checks.push({ name: 'lfs.storage', ok: lfs === join(root, 'lfs'), detail: lfs || 'Unset' });
       return { checks };
     });
   }
@@ -994,7 +970,7 @@ export function createGitx(options: GitxOptions = {}) {
     return (await git(args, cwd, true)).code;
   }
 
-  return { run, cache, storeInfo, refresh, gc, clear, setStore, doctor, storePath };
+  return { run, cache, storeInfo, fetch, gc, doctor, storePath };
 }
 
 function processExists(pid: number): boolean {

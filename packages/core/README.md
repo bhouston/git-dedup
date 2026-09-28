@@ -48,17 +48,15 @@ process.exitCode = exitCode;
 
 The returned methods are asynchronous:
 
-| Method           | Result and behavior                                                                             |
-| ---------------- | ----------------------------------------------------------------------------------------------- |
-| `run(args)`      | Git exit code; optimizes supported operations                                                   |
-| `cache(path?)`   | `{ cached, skipped }`; adopts a repository and discoverable submodules, including local commits |
-| `storePath()`    | Resolved store path                                                                             |
-| `storeInfo()`    | `{ path, sizeBytes, mirrorCount }`                                                              |
-| `refresh()`      | `{ refreshed }`; fetches and repacks mirrors                                                    |
-| `gc(unused?)`    | `{ removed }`; removes old mirrors, default `30d`; accepts ages such as `12h` or `60m`          |
-| `clear()`        | Deletes a recognized store, including its LFS directory                                         |
-| `setStore(path)` | Store path; writes global `gitx.store` and `lfs.storage`                                        |
-| `doctor()`       | `{ checks }`; each check has `name`, `ok`, and `detail`                                         |
+| Method         | Result and behavior                                                                             |
+| -------------- | ----------------------------------------------------------------------------------------------- |
+| `run(args)`    | Git exit code; optimizes supported operations                                                   |
+| `cache(path?)` | `{ cached, skipped }`; adopts a repository and discoverable submodules, including local commits |
+| `storePath()`  | Resolved store path                                                                             |
+| `storeInfo()`  | `{ path, sizeBytes, mirrorCount }`                                                              |
+| `fetch()`      | `{ fetched }`; fetches and repacks mirrors                                                      |
+| `gc(unused?)`  | `{ removed }`; removes old mirrors, default `30d`; accepts ages such as `12h` or `60m`          |
+| `doctor()`     | `{ checks }`; each check has `name`, `ok`, and `detail`                                         |
 
 ### Consolidate an existing repository
 
@@ -101,7 +99,7 @@ Clone estimates count duplicate pack bytes avoided; cache estimates count the re
 
 ## Configuration
 
-Git configuration supports `gitx.store`, `gitx.enabled`, `gitx.gitPath`, and `gitx.linkMode` (`auto`, `hardlink`, `reflink`, or `copy`). `GITX_STORE` overrides the store location; `GITX_DISABLE=1` bypasses optimization. Configuration is not changed by cloning. Calling `setStore()` explicitly changes both global `gitx.store` and `lfs.storage`.
+The store defaults to `~/.cache/gitx`; `GITX_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `gitx.enabled`, `gitx.gitPath`, and `gitx.linkMode` (`auto`, `hardlink`, `reflink`, or `copy`). `GITX_DISABLE=1` bypasses optimization. gitx does not change global Git configuration.
 
 ## Storage safety
 
@@ -109,7 +107,7 @@ Each consumer has its own Git object directory and uses no Git alternates. Hard 
 
 Keep the store on the same filesystem as your working copies to enable hard links. Cross-filesystem copies and later Git maintenance can reduce sharing. The first clone creates a mirror, so savings generally come from reusing it across consumers.
 
-Git LFS is separate. `gitx store clear` also removes the store's LFS directory; objects held only there may need to be fetched again. Cache adoption retains existing local LFS objects. Clearing requires the `.gitx-store` marker and refuses directories with unrelated files. Store mutations are serialized with locks.
+To remove the store, delete its directory when no gitx operations are running. Cache adoption retains existing local Git LFS objects. gitx does not configure `lfs.storage`.
 
 Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
 

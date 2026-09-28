@@ -14,4 +14,4 @@ For an existing checkout, `gitx cache [path]` can adopt its Git objects into the
 
 Existing repositories keep normal Git behavior. Commands such as `gitx status`, `gitx fetch`, and `gitx pull` are passed through to Git. Supported operations use the shared store without making a checkout depend on it; unsupported forms fall back to Git. The `--stats` report is optional and estimates logical packed-file reuse, not physical disk usage.
 
-There is no automatic replacement of `git`. Agents use `gitx` when you want the wrapper; existing `git` commands still invoke Git directly. You do not need to edit every repository's Git configuration. For storage settings and supported options, see the [getting started guide](./index.md) and [CLI reference](./cli.md).
+There is no automatic replacement of `git`. Agents use `gitx` when you want the wrapper; existing `git` commands still invoke Git directly. You do not need to edit every repository's Git configuration. For storage settings and supported options, see the [getting started guide](./index.md) and [CLI reference](/docs/cli).

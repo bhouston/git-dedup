@@ -120,18 +120,38 @@ describe('gitx CLI', () => {
     expect(doc.global.flags).toContainEqual(expect.objectContaining({ name: 'stats' }));
     expect(doc.commands).toHaveProperty('gitx clone');
     expect(doc.commands).toHaveProperty('gitx store');
-    expect(doc.commands).toHaveProperty('gitx store refresh');
+    expect(doc.commands).toHaveProperty('gitx store fetch');
+    expect(doc.commands).not.toHaveProperty('gitx store refresh');
     expect(doc.commands).toHaveProperty('gitx store gc');
-    expect(doc.commands).toHaveProperty('gitx store clear');
-    expect(doc.commands).toHaveProperty('gitx store set');
+    expect(doc.commands).not.toHaveProperty('gitx store clear');
+    expect(doc.commands).not.toHaveProperty('gitx store set');
   });
 
   it('generates documentation for nested store commands', async () => {
     const result = await cli.run(['docgen', '--format', 'markdown']);
     expect(result).toSucceed();
-    expect(result).toHaveStdout('## gitx store refresh');
+    expect(result).toHaveStdout('## gitx store fetch');
     expect(result).toHaveStdout('## gitx store gc');
-    expect(result).toHaveStdout('## gitx store set');
+    expect(result).not.toHaveStdout('## gitx store set');
+  });
+
+  it('fetches store mirrors and rejects the removed refresh command', async () => {
+    const { dir, remote } = await gitRemoteFixture();
+    const options = { cwd: dir, env: isolatedEnv(dir) };
+    expect(await cli.run(['clone', remote, 'consumer'], options)).toSucceed();
+    const result = await cli.run(['store', 'fetch'], options);
+    expect(result).toSucceed();
+    expect(result).toHaveStdout('Fetched 1 mirror(s).');
+    expect(await cli.run(['store', 'refresh'], options)).toFail();
+  });
+
+  it.each([['clear'], ['set', 'new-store']])('rejects removed store command %s', async (...args) => {
+    const dir = await fixture();
+    const env = isolatedEnv(dir);
+    const result = await cli.run(['store', ...args], { cwd: dir, env });
+    expect(result).toFail();
+    await expect(access(env.GIT_CONFIG_GLOBAL!)).rejects.toThrow();
+    await expect(access(join(dir, 'new-store'))).rejects.toThrow();
   });
 
   it('runs the default store command from its directory', async () => {

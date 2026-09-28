@@ -92,7 +92,7 @@ try {
   }
   assert.equal((await stat(join(packDir('alpha-one'), pack))).ino, first.ino, 'kept base pack survives consumer gc');
   const info = await api.storeInfo();
-  await api.clear();
+  await rm(store, { recursive: true, force: true });
   for (const name of clones) {
     git(join(root, name), 'fsck', '--full');
     assert.equal(git(join(root, name), 'rev-list', '--count', 'HEAD'), '3');

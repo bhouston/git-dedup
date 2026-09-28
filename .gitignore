@@ -9,3 +9,5 @@ coverage/
 .env.*
 !.env.example
 release-artifacts/
+packages/website/.generated/
+packages/website/docs/cli/

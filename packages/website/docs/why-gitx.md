@@ -2,78 +2,75 @@
 title: Why gitx?
 ---
 
-## Automatic sharing, independent checkouts
+gitx makes repeated checkouts faster and smaller by automatically reusing a local mirror. It is built for coding agents, parallel tasks, and short-lived workspaces that need fresh copies of the same repositories.
 
-gitx was developed for short-lived repositories in agentic workflows, where agents repeatedly create checkouts or use worktrees with submodules. **Automatically** reusing Git objects reduces repeated downloads and duplicate object storage as new workspaces spin up. We prefer its approach for these workflows because sharing is automatic and the resulting Git repositories can outlive the cache.
+## Clone freely, store once
+
+Every new workspace usually downloads and stores another copy of a repository's history. gitx keeps a mirror in its local store and reuses those Git objects across checkouts. You run a familiar command; gitx manages the mirror for you.
 
 ```sh
+# Automatically create or reuse a mirror in ~/.cache/gitx.
 gitx clone https://github.com/you/project.git project-main
-gitx --stats clone https://github.com/you/project.git project-review
-gitx cache ./existing-project --stats
+
+# Reuse it for another independent checkout.
+gitx clone https://github.com/you/project.git project-review
+
+# Add a repository you already have.
+gitx cache ./existing-project
 ```
 
-For supported operations, gitx chooses and refreshes a mirror, creates an independent consumer, and restores the original remote URL. gitx handles the bookkeeping of creating and updating mirrors and selecting the right one for each clone. There is no per-clone reference path to track or separate dissociation step to remember. The same storage logic prepares supported submodules, including nested modules and modules inside linked worktrees.
+For large repositories, reusing a populated store can turn a **100+ second fresh clone into a near-instant repeat checkout**. Add `--stats` to see how much packed data is shared.
 
-## Inspired by pnpm's shared-store simplicity
+The same approach helps with submodules and submodules inside new worktrees. Agents can create workspaces as needed while gitx handles mirror creation, updates, and reuse in the background.
 
-gitx was inspired by the simplicity of pnpm's shared package store: run a familiar command and let the tool reuse local data across projects. Sharing should be a routine part of the workflow, without manually wiring each new project to a cache.
+## Keep using Git
 
-pnpm's [documented node_modules layout](https://pnpm.io/symlinked-node-modules-structure) combines package files hard-linked from a content-addressable store with symbolic links that arrange dependencies. gitx applies the shared-store idea to Git: supported clones reuse a local mirror, while each consumer keeps its own object links or copies. The store handles reuse; the checkout remains usable with ordinary Git.
+Each checkout is an ordinary Git repository with its original remote URL. Use `git status`, `git diff`, `git commit`, and the rest of your normal workflow. Editors and other Git tools continue to work with it.
 
-The inspiration is both ease of use and efficient storage. pnpm organizes package contents; gitx maintains a bare mirror per normalized remote and shares Git object files. gitx does not use pnpm's store or reproduce its dependency layout. Its cache-deletion guarantee follows from its own independent object directories, as explained below.
+gitx also forwards ordinary Git commands, so you can use it consistently in scripts and agent instructions. The [agent setup guide](./agents.md) has a short instruction you can add to your project.
 
-## Compared with Chromium's depot_tools
+## Inspired by pnpm
 
-Chromium's Git caching tools are part of **depot_tools**, including `gclient` and `git cache`. They serve Chromium's development workflow. Chromium's [depot_tools guide](https://www.chromium.org/developers/how-tos/depottools/) describes that toolchain.
+pnpm showed how convenient a shared local store can be: run the command and let the tool reuse data across projects. gitx brings that simplicity to Git repositories.
 
-There are two relevant paths in the [current gclient implementation](https://chromium.googlesource.com/chromium/tools/depot_tools/+/refs/heads/main/gclient_scm.py):
-
-- **Shared-cache mode** clones with `--shared` and uses Git alternates. A checkout can depend on objects in the cache, so deleting that cache can leave required objects missing.
-- **Bootstrap mode** hard-links or copies objects instead. This also supports independent new checkouts. Selecting bootstrap mode does not automatically detach an existing checkout that already uses alternates.
-
-The independence property is therefore not unique to gitx. Our preference for gitx is about making it the normal path for supported, everyday Git operations. Install one Node.js CLI, run `gitx clone`, and let it manage mirror selection, updates, locking, origin URLs, and submodule preparation. Existing repositories can be adopted with `gitx cache`; optional reports show how much packed data is shared.
-
-Use depot_tools when working in a project that requires its workflow. gitx does not replace `gclient` dependency management or the rest of Chromium's tooling.
+You do not need to maintain mirrors yourself, find the right reference path for each clone, or remember extra flags. Sharing becomes part of creating a checkout.
 
 ## Compared with manual mirrors and reference clones
 
-Git already provides the building blocks. The important choice is whether the consumer owns links or copies of its objects, or continues borrowing them from another repository.
+Git provides the building blocks, but you have to remember the setup for every repository:
 
-| Approach                                    | Sharing and cache-deletion behavior                                                          | What you manage                                          |
-| ------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------- |
-| `git clone --reference <mirror> <remote>`   | Borrows objects through alternates; deleting needed reference objects can break the consumer | Mirror lifecycle and reference dependencies              |
-| Add `--dissociate` to a reference clone     | Copies the borrowed objects locally so the reference is no longer required                   | Mirror setup, updates, paths, and clone flags            |
-| Local clone of a self-contained bare mirror | Can hard-link objects and remain valid after mirror deletion                                 | Mirror setup, freshness, origin URL, and coordination    |
-| Supported gitx clone or cache adoption      | Keeps object links or copies in the consumer, without alternates                             | Choose a store if the default location does not suit you |
+```sh
+# Create a mirror before using it for checkouts.
+mkdir -p ~/git-mirrors
+git clone --mirror https://github.com/you/project.git ~/git-mirrors/project.git
 
-Git documents these mechanisms and the risks of borrowed objects in its [`git clone` reference](https://git-scm.com/docs/git-clone). `--reference-if-able` permits a missing reference at clone time; it does not make a successfully borrowed reference disposable afterward.
+# Remember its location and refresh it before each new checkout.
+git -C ~/git-mirrors/project.git fetch --prune origin
 
-A carefully maintained manual local-mirror workflow can provide the same independence. `--reference --dissociate` is another sound option when independent copies are acceptable. gitx packages the mirror workflow into repeatable commands and extends it to existing repositories and supported submodules, reducing the manual steps needed to keep it reliable.
-
-## Why deleting the store preserves Git objects
-
-A hard link is another filename for the same file on disk. Neither filename is a pointer to the other filename:
-
-```text
-store/mirrors/project.git/objects/pack/pack-….pack ─┐
-                                                  ├─ same file data
-project/.git/objects/pack/pack-….pack ──────────────┘
+# Clone locally to share objects, then restore the real remote URL.
+git clone ~/git-mirrors/project.git project-review
+git -C project-review remote set-url origin https://github.com/you/project.git
 ```
 
-Deleting the store removes the first name. The consumer's name still keeps the file data alive. Git can continue reading it without finding the mirror path. Where files are copied instead, the consumer already has a separate copy. Normal Git repacking writes replacement files rather than modifying shared pack contents in place.
+Reference clones also require the mirror path each time. Add `--dissociate` to keep the checkout independent:
 
-Alternates behave differently: Git looks in another object directory for missing objects. If that directory disappears, those lookups fail. gitx's optimized consumers do not use alternates, so removing its store does not create that dependency failure.
+```sh
+git clone --reference ~/git-mirrors/project.git --dissociate \
+  https://github.com/you/project.git project-task
+```
 
-This is covered by tests, not just a design intention. The repository's `pnpm test:proof` creates temporary remotes and concurrent consumers, verifies shared pack inodes, deletes the store, checks consumers with `git fsck --full` and history reads, and verifies that a later clone rebuilds the store.
+For each different repository, you must create its own mirror first, remember where it lives, keep it updated, and use the right clone commands. That is a lot of bookkeeping.
 
-Use `gitx store clear` for coordinated cleanup. It waits for active gitx store operations and checks the store marker and directory contents. Deleting files externally bypasses these locks; do not remove the store manually while gitx is using it.
+With gitx:
 
-## What this guarantee covers
+```sh
+# Mirror creation, lookup, updates, and reuse are automatic.
+gitx clone https://github.com/you/project.git project-review
+gitx clone https://github.com/you/another-project.git another-task
+```
 
-- **Git objects in optimized consumers.** Unsupported invocations are forwarded to Git. Explicit `--reference` or `--shared` options retain Git's own semantics, including any dependencies they create.
-- **The gitx store, not a worktree's parent repository.** Linked worktrees still depend on Git's common repository. Submodule preparation does not change that relationship.
-- **Git LFS has separate storage.** `gitx store set` also sets global `lfs.storage`. LFS content stored only there may need downloading again after cleanup. See [safety and limitations](./safety.md).
-- **Deletion, not arbitrary file damage.** Hard-linked files share contents; manually overwriting a shared object can damage every link to it. This is not a backup system.
-- **Savings depend on the filesystem and workflow.** Hard links require the same filesystem. Copies, subsequent repacking, and the first mirror's storage cost affect savings. Normal fetches and pulls are not accelerated.
+gitx automates the local-mirror workflow while keeping its benefits: fewer downloads, shared object storage, independent checkouts, and normal remote URLs.
 
-For repeated local checkouts, the benefit is practical: fewer setup steps, automatic reuse, and a store you can discard without breaking the Git objects already held by its consumers. See [how it works](./how-it-works.md) for implementation details and [the CLI reference](./cli.md) for commands.
+Chromium's **depot_tools** also offers Git caching as part of its development toolchain. gitx focuses on a simple, general-purpose CLI for everyday repositories. Use depot_tools for projects built around it; use gitx to add automatic mirror reuse to your existing Git workflow.
+
+[Get started](./index.md) with one npm install. See the [CLI reference](/docs/cli) for commands and [Safety](./safety.md) for storage guarantees.

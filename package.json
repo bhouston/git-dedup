@@ -23,7 +23,8 @@
     "release": "semantic-release",
     "test:coverage": "pnpm build && vitest run --coverage",
     "test:workflow": "node --test scripts/workflow.test.mjs",
-    "package:check": "pnpm build && node scripts/check-packages.mjs"
+    "package:check": "pnpm build && node scripts/check-packages.mjs",
+    "docs:generate": "pnpm build && node scripts/generate-docs.mjs"
   },
   "devDependencies": {
     "@anolilab/semantic-release-pnpm": "^8.1.29",
