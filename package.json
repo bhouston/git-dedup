@@ -3,7 +3,7 @@
   "private": true,
   "description": "Independent Git checkouts backed by consolidated local storage",
   "license": "MIT",
-  "repository": "github:bhouston/gix",
+  "repository": "github:bhouston/gitx",
   "type": "module",
   "scripts": {
     "build": "pnpm --filter @bhouston/gitx-core build && pnpm --filter @bhouston/gitx build",

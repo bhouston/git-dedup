@@ -5,7 +5,7 @@ module.exports = {
   url: process.env.SITE_URL ?? 'https://gitx.ben3d.ca',
   baseUrl: process.env.BASE_URL ?? '/',
   organizationName: 'bhouston',
-  projectName: 'gix',
+  projectName: 'gitx',
   onBrokenLinks: 'throw',
   markdown: { format: 'md' },
   presets: [
@@ -27,7 +27,7 @@ module.exports = {
         { to: '/docs/cli', label: 'CLI', position: 'left' },
         { to: '/docs/how-it-works', label: 'How it works', position: 'left' },
         { to: '/docs/roadmap', label: 'Roadmap', position: 'left' },
-        { href: 'https://github.com/bhouston/gix', label: 'GitHub', position: 'right' },
+        { href: 'https://github.com/bhouston/gitx', label: 'GitHub', position: 'right' },
       ],
     },
     footer: {
@@ -43,7 +43,7 @@ module.exports = {
         {
           title: 'Project',
           items: [
-            { label: 'Source', href: 'https://github.com/bhouston/gix' },
+            { label: 'Source', href: 'https://github.com/bhouston/gitx' },
             { label: 'Development', to: '/docs/development' },
           ],
         },
