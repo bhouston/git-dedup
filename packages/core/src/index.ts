@@ -17,7 +17,7 @@ import {
 import { homedir, constants as osConstants } from 'node:os';
 import { basename, delimiter, dirname, join, resolve, sep } from 'node:path';
 import { createHash } from 'node:crypto';
-import { simpleGit } from 'simple-git';
+import { GitPluginError, simpleGit } from 'simple-git';
 
 export interface GitxOptions {
   cwd?: string;
@@ -494,7 +494,17 @@ export function createGitx(options: GitxOptions = {}) {
           unsafe: { allowUnsafeConfigPaths: true },
           allowEnvironment: Object.keys(clientEnv),
         });
-        await client.env(clientEnv).clone(remote, staging, ['--bare']);
+        try {
+          await client.env(clientEnv).clone(remote, staging, ['--bare']);
+        } catch (error) {
+          if (!(error instanceof GitPluginError) || !['unsafe', 'allowEnvironment'].includes(error.plugin ?? ''))
+            throw error;
+          // Library policy can reject ordinary caller settings such as EDITOR or
+          // GIT_SSH_COMMAND before spawning Git. This local Git wrapper already
+          // honors that same environment for every other operation. Run the
+          // mirror clone through our native adapter; keep transport errors intact.
+          await checked(['clone', '--bare', '--', remote, staging]);
+        }
         if ((await checked(['-C', staging, 'rev-parse', '--show-object-format'])) !== 'sha1')
           throw new Error('Unsupported Git object format');
         await rename(staging, mirror);
