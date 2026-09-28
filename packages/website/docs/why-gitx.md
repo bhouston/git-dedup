@@ -14,6 +14,14 @@ gitx cache ./existing-project --stats
 
 For supported operations, gitx chooses and refreshes a mirror, creates an independent consumer, and restores the original remote URL. There is no per-clone reference path to track or separate dissociation step to remember. The same storage logic prepares supported submodules, including nested modules and modules inside linked worktrees.
 
+## Inspired by pnpm's shared-store simplicity
+
+gitx was inspired by the simplicity of pnpm's shared package store: run a familiar command and let the tool reuse local data across projects. Sharing should be a routine part of the workflow, without manually wiring each new project to a cache.
+
+pnpm's [documented node_modules layout](https://pnpm.io/symlinked-node-modules-structure) combines package files hard-linked from a content-addressable store with symbolic links that arrange dependencies. gitx applies the shared-store idea to Git: supported clones reuse a local mirror, while each consumer keeps its own object links or copies. The store handles reuse; the checkout remains usable with ordinary Git.
+
+The inspiration is both ease of use and efficient storage. pnpm organizes package contents; gitx maintains a bare mirror per normalized remote and shares Git object files. gitx does not use pnpm's store or reproduce its dependency layout. Its cache-deletion guarantee follows from its own independent object directories, as explained below.
+
 ## Compared with Chromium's depot_tools
 
 Chromium's Git caching tools are part of **depot_tools**, including `gclient` and `git cache`. They serve Chromium's development workflow. Chromium's [depot_tools guide](https://www.chromium.org/developers/how-tos/depottools/) describes that toolchain.
