@@ -1,3 +1,5 @@
+const clidocPlugin = require('@clidoc/docusaurus');
+
 module.exports = {
   title: 'gitx',
   tagline: 'Optimized for short-lived repositories in agentic workflows.',
@@ -18,6 +20,7 @@ module.exports = {
       },
     ],
   ],
+  plugins: [[clidocPlugin, { input: '.generated/gitx.json', outputDir: 'docs/cli', basePath: '/cli' }]],
   themeConfig: {
     navbar: {
       title: 'gitx',
@@ -26,7 +29,6 @@ module.exports = {
         { to: '/docs', label: 'Get started', position: 'left' },
         { to: '/docs/cli', label: 'CLI', position: 'left' },
         { to: '/docs/how-it-works', label: 'How it works', position: 'left' },
-        { to: '/docs/roadmap', label: 'Roadmap', position: 'left' },
         { href: 'https://github.com/bhouston/gitx', label: 'GitHub', position: 'right' },
       ],
     },
@@ -42,10 +44,7 @@ module.exports = {
         },
         {
           title: 'Project',
-          items: [
-            { label: 'Source', href: 'https://github.com/bhouston/gitx' },
-            { label: 'Development', to: '/docs/development' },
-          ],
+          items: [{ label: 'Source', href: 'https://github.com/bhouston/gitx' }],
         },
       ],
       copyright: `Copyright © ${new Date().getFullYear()} gitx · MIT · Created with love ❤️ by <a href="https://ben3d.ca">Ben Houston</a> · Sponsored by <a href="https://landofassets.com">Land of Assets</a>`,

@@ -91,7 +91,7 @@ it('intercepts worktree add and initializes independent mirror-backed submodules
       0,
     );
     await expect(access(join(emptyWorker, '.gitmodules'))).rejects.toThrow();
-    await api.clear();
+    await rm(env.GITX_STORE, { recursive: true, force: true });
     git(consumer, 'fsck', '--full');
     git(worker, 'fsck', '--full');
     git(module, 'fsck', '--full');

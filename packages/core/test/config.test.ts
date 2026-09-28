@@ -1,5 +1,5 @@
-import { afterEach, expect, it } from 'vitest';
-import { mkdtemp, mkdir, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { afterEach, expect, it, vi } from 'vitest';
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -7,6 +7,7 @@ import { createGitx } from '../src/index.js';
 
 const roots: string[] = [];
 afterEach(async () => {
+  vi.unstubAllEnvs();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 async function fixture() {
@@ -25,33 +26,17 @@ async function fixture() {
   return { root, config, store, env, api: createGitx({ cwd: root, env }) };
 }
 
-it('writes only explicitly requested global configuration and honors environment store precedence', async () => {
+it('uses only the default or environment store and ignores Git store configuration', async () => {
   const { root, config, store, env, api } = await fixture();
-  const configured = join(root, 'configured');
-  expect(await api.setStore(configured)).toBe(configured);
-  const text = await readFile(config, 'utf8');
-  expect(text).toContain(configured);
-  expect(text).toContain(join(configured, 'lfs'));
-  expect((await api.storeInfo()).path).toBe(store);
-  const fromConfig = createGitx({ cwd: root, env: { ...env, GITX_STORE: undefined } });
-  expect((await fromConfig.storeInfo()).path).toBe(configured);
-  await fromConfig.clear();
-});
-
-it('refuses to clear an unrelated directory, even one with a mirrors subdirectory', async () => {
-  const { store, api } = await fixture();
-  await mkdir(join(store, 'mirrors'), { recursive: true });
-  await writeFile(join(store, 'precious.txt'), 'keep');
-  await expect(api.clear()).rejects.toThrow('unrecognized store');
-  expect(await readFile(join(store, 'precious.txt'), 'utf8')).toBe('keep');
-});
-
-it('refuses to clear a managed store after unrelated files have been added', async () => {
-  const { store, api } = await fixture();
-  await api.setStore(store);
-  await writeFile(join(store, 'precious.txt'), 'keep');
-  await expect(api.clear()).rejects.toThrow('unrelated files');
-  expect(await readFile(join(store, 'precious.txt'), 'utf8')).toBe('keep');
+  vi.stubEnv('HOME', root);
+  await writeFile(config, `[gitx]\n store = ${join(root, 'legacy')}\n`);
+  const before = await readFile(config, 'utf8');
+  expect(await api.storePath()).toBe(store);
+  const defaults = createGitx({ cwd: root, env: { ...env, GITX_STORE: undefined } });
+  expect(await defaults.storePath()).toBe(join(root, '.cache', 'gitx'));
+  const relative = createGitx({ cwd: root, env: { ...env, GITX_STORE: 'custom-store' } });
+  expect(await relative.storePath()).toBe(join(root, 'custom-store'));
+  expect(await readFile(config, 'utf8')).toBe(before);
 });
 
 it('doctor reports checks and never changes global Git configuration', async () => {
@@ -59,9 +44,8 @@ it('doctor reports checks and never changes global Git configuration', async () 
   await writeFile(config, '[user]\n name = Test\n');
   const before = await readFile(config, 'utf8');
   const result = await api.doctor();
-  expect(result.checks.map((check) => check.name)).toEqual(['filesystem', 'reflink', 'git', 'lfs.storage']);
+  expect(result.checks.map((check) => check.name)).toEqual(['filesystem', 'reflink', 'git']);
   expect(await readFile(config, 'utf8')).toBe(before);
-  await api.clear();
 });
 
 it('uses gitx.gitPath from Git configuration', async () => {

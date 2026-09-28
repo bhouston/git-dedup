@@ -110,7 +110,7 @@ it('clones through a mirror with independent hard-linked packs and survives stor
   const info = await api.storeInfo();
   expect(info.mirrorCount).toBe(1);
   await expectLinkedPack(store, remote, join(consumer, '.git'));
-  await api.clear();
+  await rm(store, { recursive: true, force: true });
   expect(git(['show', 'HEAD:hello.txt'], consumer)).toBe('hello');
   git(['fsck', '--full'], consumer);
   expect(await api.run(['clone', remote, 'again'])).toBe(0);
@@ -131,7 +131,7 @@ it('caches an existing repo and keeps it usable after clearing the store', async
   expect((await api.cache(consumer)).cached).toBe(1);
   expect((await api.storeInfo()).mirrorCount).toBe(1);
   await expectLinkedPack(store, remote, join(consumer, '.git'));
-  await api.clear();
+  await rm(store, { recursive: true, force: true });
   expect(git(['show', 'HEAD:hello.txt'], consumer)).toBe('hello');
   expect(git(['show', 'HEAD:unique.txt'], consumer)).toBe('local');
   git(['fsck', '--full'], consumer);
@@ -173,7 +173,7 @@ it('preseeds a submodule in a new worktree', async () => {
   expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
   await expectLinkedPack(store, remote, git(['rev-parse', '--absolute-git-dir'], module));
   expect((await api.cache(worktree)).cached).toBe(1);
-  await api.clear();
+  await rm(store, { recursive: true, force: true });
   git(['fsck', '--full'], join(root, 'parent'));
   git(['fsck', '--full'], module);
 });
@@ -203,7 +203,7 @@ it('adopts objects from the common gitdir when cache runs in a worktree', async 
   expect((await api.cache()).cached).toBe(1);
   const common = git(['rev-parse', '--path-format=absolute', '--git-common-dir'], worktree);
   await expectLinkedPack(store, remote, common);
-  await api.clear();
+  await rm(store, { recursive: true, force: true });
   expect(git(['show', 'HEAD:hello.txt'], worktree)).toBe('hello');
   git(['fsck', '--full'], worktree);
 });
@@ -218,7 +218,7 @@ it('uses independent kept packs in copy mode', async () => {
   const pack = (await readdir(source)).find((name) => name.endsWith('.pack'))!;
   expect((await stat(join(source, pack))).ino).not.toBe((await stat(join(target, pack))).ino);
   expect(await readdir(target)).toContain(pack.replace(/\.pack$/, '.keep'));
-  await api.clear();
+  await rm(store, { recursive: true, force: true });
   git(['fsck', '--full'], join(root, 'copy'));
 });
 
@@ -328,12 +328,12 @@ it('resolves relative submodule URLs against the parent remote', async () => {
   expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
   await expectLinkedPack(store, remote, git(['rev-parse', '--absolute-git-dir'], module));
   expect((await api.cache(join(root, 'parent'))).cached).toBe(2);
-  await api.clear();
+  await rm(store, { recursive: true, force: true });
   git(['fsck', '--full'], join(root, 'parent'));
   git(['fsck', '--full'], module);
 });
 
-it('refreshes and expires mirrors without damaging existing consumers', async () => {
+it('fetches and expires mirrors without damaging existing consumers', async () => {
   const { root, source, remote, store } = await fixture();
   const api = createGitx({ cwd: root, env: testEnv(root, store) });
   expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
@@ -341,9 +341,10 @@ it('refreshes and expires mirrors without damaging existing consumers', async ()
   git(['add', '.'], source);
   git(['commit', '-m', 'advance'], source);
   git(['push', 'origin', 'main'], source);
-  expect(await api.refresh()).toEqual({ refreshed: 1 });
+  expect(await api.fetch()).toEqual({ fetched: 1 });
   expect(await api.gc('30d')).toEqual({ removed: 0 });
   const mirror = join(store, 'mirrors', keyForRemote(remote)! + '.git');
+  expect(git(['rev-parse', 'refs/heads/main'], mirror)).toBe(git(['rev-parse', 'HEAD'], source));
   const old = new Date(Date.now() - 31 * 86400000);
   await utimes(join(mirror, '.gitx-last-used'), old, old);
   expect(await api.gc('30d')).toEqual({ removed: 1 });
@@ -365,7 +366,7 @@ it('retains local LFS objects when adopting and deleting the store', async () =>
   expect(await readFile(join(store, 'lfs', 'objects', 'aa', 'bb', 'object'), 'utf8')).toBe(
     'locally authored LFS content',
   );
-  await api.clear();
+  await rm(store, { recursive: true, force: true });
   expect(await readFile(join(local, 'object'), 'utf8')).toBe('locally authored LFS content');
   git(['fsck', '--full'], consumer);
 });
@@ -383,7 +384,7 @@ it.each([
   expect((await api.storeInfo()).mirrorCount).toBe(1);
   const consumer = join(root, 'consumer');
   await expectLinkedPack(store, remote, join(consumer, '.git'));
-  await api.clear();
+  await rm(store, { recursive: true, force: true });
   git(['fsck', '--full'], consumer);
   expect(git(['show', 'HEAD:hello.txt'], consumer)).toBe('hello');
 });

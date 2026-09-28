@@ -23,7 +23,7 @@ git diff
 git log --oneline
 ```
 
-For large repositories, reusing a populated store can turn a **100+ second fresh clone into a near-instant repeat checkout**. The first clone fills the mirror; actual times depend on remote updates, disk speed, and the files Git needs to check out.
+For large repositories, reusing a populated store can turn a **100+ second fresh clone into a near-instant repeat checkout**.
 
 **[Documentation](https://gitx.ben3d.ca/) · [CLI reference](https://gitx.ben3d.ca/docs/cli) · [Agent setup](https://gitx.ben3d.ca/docs/agents)**
 
@@ -33,7 +33,7 @@ For large repositories, reusing a populated store can turn a **100+ second fresh
 - Consolidate existing repositories, including local commits and discoverable submodules.
 - Prepare nested submodules and submodules inside new worktrees from mirrors.
 - Inspect storage sharing with optional `--stats` reports.
-- Refresh, prune, and clear the store while preserving consumers' Git objects.
+- Fetch and prune the store while preserving consumers' Git objects.
 - Use the TypeScript core library in your own Node.js tools.
 
 Requires **Node.js 22+ and Git**. Tested on macOS and Linux. Git LFS is optional for repositories that use it.
@@ -84,19 +84,18 @@ Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata,
 
 ## Configuration
 
-The default store is a cache directory in your home directory. Choose a location on the same filesystem as your repositories:
+The default store is `~/.cache/gitx`. Override it with `GITX_STORE`:
 
 ```sh
-git config --global gitx.store "$HOME/.cache/gitx"
+export GITX_STORE="$HOME/my-gitx-store"
 ```
 
-Installation and cloning do not change global Git configuration. `gitx store set <path>` is an explicit alternative that sets **both** global `gitx.store` and `lfs.storage`.
+Changing `GITX_STORE` selects a different store; it does not move the existing one. gitx does not change global Git configuration.
 
 | Setting              | Purpose                                                                   |
 | -------------------- | ------------------------------------------------------------------------- |
 | `GITX_STORE`         | Override the store path for an invocation                                 |
 | `GITX_DISABLE=1`     | Forward to Git without optimization                                       |
-| `gitx.store`         | Store path in Git configuration                                           |
 | `gitx.enabled=false` | Disable optimization persistently                                         |
 | `gitx.gitPath`       | Select the Git executable                                                 |
 | `gitx.linkMode`      | Choose `auto`, `hardlink`, `reflink`, or `copy` for eligible object files |
@@ -107,7 +106,7 @@ Each consumer has its own Git object directory and uses no Git alternates. Hard 
 
 Keep the store on the same filesystem as your working copies to enable hard links. Cross-filesystem copies and later Git maintenance can reduce sharing. The first clone creates a mirror, so savings generally come from reusing it across consumers.
 
-Git LFS is separate. `gitx store clear` also removes the store's LFS directory; objects held only there may need to be fetched again. Cache adoption retains existing local LFS objects. Clearing requires the `.gitx-store` marker and refuses directories with unrelated files. Store mutations are serialized with locks.
+To remove the store, delete its directory when no gitx operations are running. Cache adoption retains existing local Git LFS objects. gitx does not configure `lfs.storage`.
 
 Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
 
@@ -145,7 +144,7 @@ pnpm test:proof
 
 `pnpm check` runs Oxlint, Oxfmt, TypeScript checks, Vitest, workflow tests, npm package checks, and the documentation build. CLI tests use `vitest-command-line`. The proof script creates temporary loopback Git remotes, verifies concurrent clones share object files, deletes the store, and checks that consumers remain valid.
 
-See [development documentation](https://gitx.ben3d.ca/docs/development), the [implementation plan](https://github.com/bhouston/gitx/blob/main/docs/PLAN.md), and [release setup](https://github.com/bhouston/gitx/blob/main/RELEASING.md).
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [RELEASING.md](RELEASING.md) for release setup.
 
 ## Contributing
 

@@ -96,6 +96,9 @@ importers:
 
   packages/website:
     dependencies:
+      '@clidoc/docusaurus':
+        specifier: ^0.1.0
+        version: 0.1.0
       '@docusaurus/core':
         specifier: ^3.10.2
         version: 3.10.2(@mdx-js/react@3.1.1(@types/react@19.3.0)(react@19.3.0))(postcss@8.5.28)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(typescript@7.0.2)
@@ -807,6 +810,10 @@ packages:
 
   '@clidoc/core@1.0.0':
     resolution: {integrity: sha512-oyUkkXQ7VNRO7fXXn388oYe77jE+rVZE8MVhXcZb3C9VlDwAlTx/EUTk1QjQMrnd7ecJxuryb/E3qsq8gLcqAQ==}
+    engines: {node: '>=22.12.0'}
+
+  '@clidoc/docusaurus@0.1.0':
+    resolution: {integrity: sha512-tKpZAAhL4I0CJ0fxbYNVzHA35QdC9fkVq2H4c44deZzViy/ZEsDu6Weg7fdRFiwyWNk4yUKBEiPkPYhPKPH/IA==}
     engines: {node: '>=22.12.0'}
 
   '@clidoc/yargs@0.1.1':
@@ -8176,6 +8183,10 @@ snapshots:
       ajv: 8.20.0
       ajv-formats: 3.0.1(ajv@8.20.0)
       yaml: 2.9.1
+
+  '@clidoc/docusaurus@0.1.0':
+    dependencies:
+      '@clidoc/core': 0.1.0
 
   '@clidoc/yargs@0.1.1':
     dependencies:
