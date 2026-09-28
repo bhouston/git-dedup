@@ -1,6 +1,6 @@
 module.exports = {
   title: 'gitx',
-  tagline: 'Shared Git storage, ordinary Git repositories.',
+  tagline: 'Optimized for short-lived repositories in agentic workflows.',
   favicon: 'img/gitx-mark.svg',
   url: process.env.SITE_URL ?? 'https://bhouston.github.io',
   baseUrl: process.env.BASE_URL ?? '/gix/',
@@ -48,7 +48,7 @@ module.exports = {
           ],
         },
       ],
-      copyright: `Copyright © ${new Date().getFullYear()} gitx contributors`,
+      copyright: `Copyright © ${new Date().getFullYear()} gitx · MIT · Created with love ❤️ by <a href="https://ben3d.ca">Ben Houston</a> · Sponsored by <a href="https://landofassets.com">Land of Assets</a>`,
     },
   },
 };

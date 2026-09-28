@@ -11,6 +11,8 @@ _A Git wrapper for independent checkouts backed by shared local storage._
 
 gitx keeps a bare mirror for each supported remote and shares Git object files with repeated clones. Use it for parallel project checkouts, coding-agent workspaces, and repositories with submodules. Checkouts remain ordinary Git repositories with their original `origin` URL.
 
+Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces. gitx manages mirror creation, updates, and reuse for you, removing the bookkeeping of maintaining mirrors and passing reference paths to each clone.
+
 **[Documentation](https://bhouston.github.io/gix/) · [CLI reference](https://bhouston.github.io/gix/docs/cli) · [Agent setup](https://bhouston.github.io/gix/docs/agents)**
 
 ## Features

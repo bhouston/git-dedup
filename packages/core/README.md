@@ -11,6 +11,8 @@ _The TypeScript storage engine behind [gitx](https://www.npmjs.com/package/@bhou
 
 Build Node.js tools that reuse local Git mirrors across independent checkouts. The core owns cloning, submodule and worktree integration, repository consolidation, and store maintenance. It builds on native Git and [simple-git](https://github.com/steveukx/git-js); the CLI handles command parsing and presentation.
 
+Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces. gitx manages mirror creation, updates, and reuse for you, removing the bookkeeping of maintaining mirrors and passing reference paths to each clone.
+
 **[Documentation](https://bhouston.github.io/gix/) · [Source](https://github.com/bhouston/gix) · [CLI package](https://www.npmjs.com/package/@bhouston/gitx)**
 
 ## Installation

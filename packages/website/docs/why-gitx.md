@@ -4,7 +4,7 @@ title: Why gitx?
 
 ## Automatic sharing, independent checkouts
 
-gitx is designed for people who keep several checkouts of the same repositories: parallel development branches, coding-agent workspaces, and projects with repeated submodule dependencies. We prefer its approach for these workflows because sharing is automatic and the resulting Git repositories can outlive the cache.
+gitx was developed for short-lived repositories in agentic workflows, where agents repeatedly create checkouts or use worktrees with submodules. **Automatically** reusing Git objects reduces repeated downloads and duplicate object storage as new workspaces spin up. We prefer its approach for these workflows because sharing is automatic and the resulting Git repositories can outlive the cache.
 
 ```sh
 gitx clone https://github.com/you/project.git project-main
@@ -12,7 +12,7 @@ gitx --stats clone https://github.com/you/project.git project-review
 gitx cache ./existing-project --stats
 ```
 
-For supported operations, gitx chooses and refreshes a mirror, creates an independent consumer, and restores the original remote URL. There is no per-clone reference path to track or separate dissociation step to remember. The same storage logic prepares supported submodules, including nested modules and modules inside linked worktrees.
+For supported operations, gitx chooses and refreshes a mirror, creates an independent consumer, and restores the original remote URL. gitx handles the bookkeeping of creating and updating mirrors and selecting the right one for each clone. There is no per-clone reference path to track or separate dissociation step to remember. The same storage logic prepares supported submodules, including nested modules and modules inside linked worktrees.
 
 ## Inspired by pnpm's shared-store simplicity
 

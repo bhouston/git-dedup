@@ -24,8 +24,8 @@ const cards = [
 export default function Home() {
   return (
     <Layout
-      title="Share Git objects across clones"
-      description="gitx helps repeated Git clones share local object storage while preserving ordinary repositories."
+      title="Git storage for agentic workflows"
+      description="Optimized for short-lived repositories in agentic workflows. Automatically reuse Git objects across repeated checkouts and worktrees with submodules."
     >
       <header className={styles.hero}>
         <div className={styles.heroInner}>
@@ -39,8 +39,9 @@ export default function Home() {
               <em>Store once.</em>
             </h1>
             <p className={styles.lead}>
-              gitx uses a local mirror to help repeated clones of a remote share Git objects. Every checkout remains a
-              regular repository you can use with Git.
+              Optimized for short-lived repositories in agentic workflows. <strong>Automatically</strong> reuse Git
+              objects across repeated checkouts and worktrees with submodules, with fewer downloads and less duplicate
+              object storage.
             </p>
             <div className={styles.actions}>
               <Link className={styles.primary} to="/docs">
@@ -101,8 +102,9 @@ export default function Home() {
           </div>
           <p>
             Development often means several copies of the same repository: separate tasks, agents, experiments, and
-            worktrees. gitx puts reusable Git objects in a local store and keeps the consumer repositories
-            self-contained.
+            worktrees. gitx <strong>automatically</strong> puts reusable Git objects in a local store and keeps the
+            consumer repositories self-contained. It manages mirror creation, updates, and reuse for you, removing the
+            bookkeeping of maintaining mirrors and passing reference paths to each clone.
           </p>
         </section>
         <section className={styles.cards} aria-label="Design principles">
