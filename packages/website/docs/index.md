@@ -6,7 +6,7 @@ slug: /
 
 gitx is a Node.js wrapper around Git. It keeps a local mirror for a remote so repeated clones can reuse Git objects. Its checkouts are ordinary Git repositories with their original `origin` URL.
 
-Optimized for short-lived repositories in agentic workflows. gitx reuses Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces.
+Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces. gitx manages mirror creation, updates, and reuse for you, removing the bookkeeping of maintaining mirrors and passing reference paths to each clone.
 
 gitx requires Node.js 22 or newer, Git, and macOS or Linux. This project is in active development; see the [roadmap](./roadmap.md) for the current scope.
 
