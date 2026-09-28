@@ -4,13 +4,9 @@
   border-bottom: 1px solid #d5e5da;
 }
 .heroInner {
-  max-width: 1200px;
+  max-width: 1000px;
   margin: auto;
-  padding: 7rem 1.5rem 6rem;
-  display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
-  gap: 5rem;
-  align-items: center;
+  padding: 4rem 1.5rem;
 }
 .kicker {
   color: #287b62;
@@ -42,7 +38,7 @@
   color: #415b58;
   font-size: 1.32rem;
   line-height: 1.55;
-  max-width: 36rem;
+  max-width: 48rem;
 }
 .actions {
   display: flex;
@@ -252,7 +248,7 @@
 .callout a {
   font-weight: 700;
 }
-.callout pre {
+.example {
   background: #142a32;
   color: #d1f5e2;
   padding: 2rem;
@@ -261,6 +257,12 @@
   overflow: auto;
   font-size: 0.95rem;
 }
+.performance {
+  color: #415b58;
+  max-width: 48rem;
+  line-height: 1.6;
+}
+
 .note {
   max-width: 1200px;
   margin: auto;
@@ -280,14 +282,16 @@
   font-weight: 700;
 }
 @media (max-width: 900px) {
-  .heroInner,
   .intro,
   .callout {
     grid-template-columns: 1fr;
     gap: 2rem;
   }
-  .heroInner {
-    padding-top: 4rem;
+  .example {
+    padding: 1rem;
+    font-size: 0.85rem;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
   }
   .diagram {
     transform: none;
@@ -316,6 +320,7 @@
   color: #f5f4ea;
 }
 [data-theme='dark'] .lead,
+[data-theme='dark'] .performance,
 [data-theme='dark'] .intro > p,
 [data-theme='dark'] .card p,
 [data-theme='dark'] .callout p:not(.kicker),
