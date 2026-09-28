@@ -1,20 +1,124 @@
 # @bhouston/gitx-core
 
-The Git operations behind `gitx`. This package exposes `createGitx()` for the CLI and other Node programs. It uses a local mirror for supported remote clones, then links packs into independent repositories. Each consumer keeps its own objects and remains readable after the mirror store is deleted.
+[![npm version](https://img.shields.io/npm/v/@bhouston/gitx-core.svg)](https://www.npmjs.com/package/@bhouston/gitx-core)
+[![npm downloads](https://img.shields.io/npm/dm/@bhouston/gitx-core.svg)](https://www.npmjs.com/package/@bhouston/gitx-core)
+[![CI](https://github.com/bhouston/gix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gix/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gix/blob/main/LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://bhouston.github.io/gix/)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
+
+_The TypeScript storage engine behind [gitx](https://www.npmjs.com/package/@bhouston/gitx)._
+
+Build Node.js tools that reuse local Git mirrors across independent checkouts. The core owns cloning, submodule and worktree integration, repository consolidation, and store maintenance. It builds on native Git and [simple-git](https://github.com/steveukx/git-js); the CLI handles command parsing and presentation.
+
+**[Documentation](https://bhouston.github.io/gix/) · [Source](https://github.com/bhouston/gix) · [CLI package](https://www.npmjs.com/package/@bhouston/gitx)**
+
+## Installation
+
+Requires **Node.js 22+ and Git** on macOS or Linux. The package is ESM and includes TypeScript declarations.
+
+```sh
+npm install @bhouston/gitx-core
+```
+
+## Quick start
 
 ```ts
 import { createGitx } from '@bhouston/gitx-core';
 
 const gitx = createGitx({ cwd: process.cwd() });
-const exitCode = await gitx.run(['clone', 'https://github.com/example/project.git']);
+const exitCode = await gitx.run(['clone', 'https://github.com/bhouston/gix.git', 'gix-checkout']);
+process.exitCode = exitCode;
 ```
 
-`run()` returns Git's exit code. It accelerates ordinary remote `clone`, `submodule update --init`, and `worktree add` with submodules. Nested submodules are supported. `submodule add` adopts the new module after Git creates it. Unrecognized Git commands and unsupported clone options pass through to Git. Shallow or partial clones, local path URLs, and SHA-256 repositories also pass through.
+`run()` accepts Git arguments and returns an exit code. It optimizes supported remote clones, `submodule update --init`, and `worktree add` with submodules. Recursive updates handle nested submodules. `submodule add` adopts the module after Git creates it. Other commands and unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, pass through to Git.
 
-The API includes `cache(path?)`, `storeInfo()`, `refresh()`, `gc(unused?)`, `clear()`, `setStore(path)`, and `doctor()`. `cache` adopts an existing repository, including its submodules and local commits. The cache operation is repeatable. The CLI package formats these results for users.
+## API
 
-Pass `onStorageReport(report)` to `createGitx()` for opt-in measurements after accelerated clones and cache adoption. A report includes the repository, whether its mirror existed, shared and copied pack bytes, and an estimated saving. Clone savings equal the logical size of pack files hard-linked to the mirror. Cache savings estimate the reduction in consumer-private pack bytes before and after adoption. These counts cover `.pack`, `.idx`, and `.rev` files, not loose objects or LFS, and do not claim actual physical disk space reclaimed. Reflinks can save physical space while appearing as copied bytes in this report.
+### `createGitx(options?)`
 
-Git config controls behavior: `gitx.store`, `gitx.enabled`, `gitx.gitPath`, and `gitx.linkMode` (`auto`, `hardlink`, `reflink`, or `copy`). `GITX_STORE` overrides the store path, and `GITX_DISABLE=1` bypasses acceleration for one command. `setStore()` also configures global `lfs.storage` at the chosen store. `cache()` copies existing local LFS objects into that store while retaining the originals.
+| Option            | Purpose                                                  |
+| ----------------- | -------------------------------------------------------- |
+| `cwd`             | Working directory; defaults to `process.cwd()`           |
+| `env`             | Environment overrides for Git operations                 |
+| `gitPath`         | Explicit Git executable                                  |
+| `onStorageReport` | Opt-in callback for clone and cache storage measurements |
 
-Mirrors and consumers are protected by store locks during clone and maintenance. Consumers never use Git alternates. Clearing the store leaves Git objects in consumers intact; LFS objects kept only in global storage must be fetched again from their LFS remote.
+The returned methods are asynchronous:
+
+| Method           | Result and behavior                                                                             |
+| ---------------- | ----------------------------------------------------------------------------------------------- |
+| `run(args)`      | Git exit code; optimizes supported operations                                                   |
+| `cache(path?)`   | `{ cached, skipped }`; adopts a repository and discoverable submodules, including local commits |
+| `storePath()`    | Resolved store path                                                                             |
+| `storeInfo()`    | `{ path, sizeBytes, mirrorCount }`                                                              |
+| `refresh()`      | `{ refreshed }`; fetches and repacks mirrors                                                    |
+| `gc(unused?)`    | `{ removed }`; removes old mirrors, default `30d`; accepts ages such as `12h` or `60m`          |
+| `clear()`        | Deletes a recognized store, including its LFS directory                                         |
+| `setStore(path)` | Store path; writes global `gitx.store` and `lfs.storage`                                        |
+| `doctor()`       | `{ checks }`; each check has `name`, `ok`, and `detail`                                         |
+
+### Consolidate an existing repository
+
+```ts
+import { createGitx } from '@bhouston/gitx-core';
+
+const gitx = createGitx({ cwd: process.cwd() });
+const { cached, skipped } = await gitx.cache('./gix-checkout');
+console.log({ cached, skipped });
+console.log(await gitx.storeInfo());
+```
+
+Cache adoption is repeatable and preserves local commits. Existing local LFS objects are copied into shared storage while retaining their originals.
+
+### Observe storage sharing
+
+```ts
+import { createGitx } from '@bhouston/gitx-core';
+
+const gitx = createGitx({
+  cwd: process.cwd(),
+  onStorageReport(report) {
+    console.log({
+      operation: report.operation,
+      repository: report.repository,
+      mirrorReused: report.mirrorReused,
+      sharedPackBytes: report.sharedPackBytes,
+      copiedPackBytes: report.copiedPackBytes,
+      estimatedSavedBytes: report.estimatedSavedBytes,
+    });
+  },
+});
+
+await gitx.cache('./gix-checkout');
+```
+
+The callback enables metadata scans after optimized clones and cache adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for cache adoption. The package exports `GitxOptions`, `StorageReport`, `StoreInfo`, `CacheResult`, `DoctorCheck`, and `DoctorResult` types.
+
+Clone estimates count duplicate pack bytes avoided; cache estimates count the reduction in private pack bytes. Counts cover `.pack`, `.idx`, and `.rev` files, excluding loose objects and LFS. They measure logical file sizes, not physical disk blocks reclaimed. Reflinks may save physical space while appearing as copied bytes, and creating a mirror on first use may yield no net savings yet.
+
+## Configuration
+
+Git configuration supports `gitx.store`, `gitx.enabled`, `gitx.gitPath`, and `gitx.linkMode` (`auto`, `hardlink`, `reflink`, or `copy`). `GITX_STORE` overrides the store location; `GITX_DISABLE=1` bypasses optimization. Configuration is not changed by cloning. Calling `setStore()` explicitly changes both global `gitx.store` and `lfs.storage`.
+
+## Storage safety
+
+Each consumer has its own Git object directory and uses no Git alternates. Hard links let multiple filenames refer to the same stored bytes: deleting the mirror removes its links while the consumer's links remain valid. Existing Git repositories remain usable after the store is deleted. Worktrees retain Git's normal dependency on their common repository.
+
+Keep the store on the same filesystem as your working copies to enable hard links. Cross-filesystem copies and later Git maintenance can reduce sharing. The first clone creates a mirror, so savings generally come from reusing it across consumers.
+
+Git LFS is separate. `gitx store clear` also removes the store's LFS directory; objects held only there may need to be fetched again. Cache adoption retains existing local LFS objects. Clearing requires the `.gitx-store` marker and refuses directories with unrelated files. Store mutations are serialized with locks.
+
+Read the [storage model](https://bhouston.github.io/gix/docs/how-it-works) and [safety guide](https://bhouston.github.io/gix/docs/safety) for details.
+
+## Contributing
+
+See [CONTRIBUTING.md](https://github.com/bhouston/gix/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gix/releases) for release notes.
+
+## License
+
+[MIT](https://github.com/bhouston/gix/blob/main/LICENSE)
+
+## Author
+
+[Ben Houston](https://ben3d.ca)
