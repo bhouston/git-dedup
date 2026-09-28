@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@bhouston/gitx.svg)](https://www.npmjs.com/package/@bhouston/gitx)
 [![CI](https://github.com/bhouston/gix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gix/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gix/blob/main/LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://bhouston.github.io/gix/)
+[![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
 _A Git wrapper for independent checkouts backed by shared local storage._
@@ -13,7 +13,7 @@ gitx keeps a bare mirror for each supported remote and shares Git object files w
 
 Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces. gitx manages mirror creation, updates, and reuse for you, removing the bookkeeping of maintaining mirrors and passing reference paths to each clone.
 
-**[Documentation](https://bhouston.github.io/gix/) · [CLI reference](https://bhouston.github.io/gix/docs/cli) · [Agent setup](https://bhouston.github.io/gix/docs/agents)**
+**[Documentation](https://gitx.ben3d.ca/) · [CLI reference](https://gitx.ben3d.ca/docs/cli) · [Agent setup](https://gitx.ben3d.ca/docs/agents)**
 
 ## Features
 
@@ -62,7 +62,7 @@ gitx worktree add -b review ../project-review
 
 Supported submodule updates prepare missing module repositories from mirrors before Git checks them out. `worktree add` shares the main repository's common object database and initializes supported submodules in the new worktree. With `--no-checkout`, initialization waits for a later submodule update. `submodule add` uses Git, then caches the added module.
 
-Unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, use ordinary Git behavior. See the [CLI reference](https://bhouston.github.io/gix/docs/cli) for the supported paths.
+Unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, use ordinary Git behavior. See the [CLI reference](https://gitx.ben3d.ca/docs/cli) for the supported paths.
 
 ### Storage reports
 
@@ -97,7 +97,7 @@ Keep the store on the same filesystem as your working copies to enable hard link
 
 Git LFS is separate. `gitx store clear` also removes the store's LFS directory; objects held only there may need to be fetched again. Cache adoption retains existing local LFS objects. Clearing requires the `.gitx-store` marker and refuses directories with unrelated files. Store mutations are serialized with locks.
 
-Read the [storage model](https://bhouston.github.io/gix/docs/how-it-works) and [safety guide](https://bhouston.github.io/gix/docs/safety) for details.
+Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
 
 ## Packages
 
@@ -120,7 +120,7 @@ const gitx = createGitx({ cwd: process.cwd() });
 process.exitCode = await gitx.run(['clone', 'https://github.com/bhouston/gix.git']);
 ```
 
-See the [core API guide](https://github.com/bhouston/gix/tree/main/packages/core). After installing globally, the [agent setup guide](https://bhouston.github.io/gix/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `gitx` explicitly.
+See the [core API guide](https://github.com/bhouston/gix/tree/main/packages/core). After installing globally, the [agent setup guide](https://gitx.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `gitx` explicitly.
 
 ## Development
 
@@ -133,7 +133,7 @@ pnpm test:proof
 
 `pnpm check` runs Oxlint, Oxfmt, TypeScript checks, Vitest, workflow tests, npm package checks, and the documentation build. CLI tests use `vitest-command-line`. The proof script creates temporary loopback Git remotes, verifies concurrent clones share object files, deletes the store, and checks that consumers remain valid.
 
-See [development documentation](https://bhouston.github.io/gix/docs/development), the [implementation plan](https://github.com/bhouston/gix/blob/main/docs/PLAN.md), and [release setup](https://github.com/bhouston/gix/blob/main/RELEASING.md).
+See [development documentation](https://gitx.ben3d.ca/docs/development), the [implementation plan](https://github.com/bhouston/gix/blob/main/docs/PLAN.md), and [release setup](https://github.com/bhouston/gix/blob/main/RELEASING.md).
 
 ## Contributing
 

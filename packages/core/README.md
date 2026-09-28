@@ -4,7 +4,7 @@
 [![npm downloads](https://img.shields.io/npm/dm/@bhouston/gitx-core.svg)](https://www.npmjs.com/package/@bhouston/gitx-core)
 [![CI](https://github.com/bhouston/gix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gix/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gix/blob/main/LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://bhouston.github.io/gix/)
+[![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
 _The TypeScript storage engine behind [gitx](https://www.npmjs.com/package/@bhouston/gitx)._
@@ -13,7 +13,7 @@ Build Node.js tools that reuse local Git mirrors across independent checkouts. T
 
 Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces. gitx manages mirror creation, updates, and reuse for you, removing the bookkeeping of maintaining mirrors and passing reference paths to each clone.
 
-**[Documentation](https://bhouston.github.io/gix/) · [Source](https://github.com/bhouston/gix) · [CLI package](https://www.npmjs.com/package/@bhouston/gitx)**
+**[Documentation](https://gitx.ben3d.ca/) · [Source](https://github.com/bhouston/gix) · [CLI package](https://www.npmjs.com/package/@bhouston/gitx)**
 
 ## Installation
 
@@ -111,7 +111,7 @@ Keep the store on the same filesystem as your working copies to enable hard link
 
 Git LFS is separate. `gitx store clear` also removes the store's LFS directory; objects held only there may need to be fetched again. Cache adoption retains existing local LFS objects. Clearing requires the `.gitx-store` marker and refuses directories with unrelated files. Store mutations are serialized with locks.
 
-Read the [storage model](https://bhouston.github.io/gix/docs/how-it-works) and [safety guide](https://bhouston.github.io/gix/docs/safety) for details.
+Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
 
 ## Contributing
 
