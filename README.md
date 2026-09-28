@@ -1,59 +1,146 @@
 # gitx
 
-gitx is a Node.js wrapper around Git that helps repeated clones share local object storage. It maintains a bare mirror per remote and makes ordinary Git repositories from that mirror. The tool and this repository are named **gitx**; the GitHub repository is [`bhouston/gix`](https://github.com/bhouston/gix).
+[![npm version](https://img.shields.io/npm/v/@bhouston/gitx.svg)](https://www.npmjs.com/package/@bhouston/gitx)
+[![npm downloads](https://img.shields.io/npm/dm/@bhouston/gitx.svg)](https://www.npmjs.com/package/@bhouston/gitx)
+[![CI](https://github.com/bhouston/gix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gix/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gix/blob/main/LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://bhouston.github.io/gix/)
+[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-The current target is Node.js 22+, macOS, and Linux. Git is required. The implementation provides remote cloning, submodule preparation during supported and recursive updates, post-add caching, repository adoption, store commands, diagnostics, and forwarding of other Git commands. `gitx worktree add` uses Git's shared common object database and initializes supported submodules from mirrors. The broader design and implementation stages are in [docs/PLAN.md](docs/PLAN.md).
+_A Git wrapper for independent checkouts backed by shared local storage._
 
-## Try it from the repository
+gitx keeps a bare mirror for each supported remote and shares Git object files with repeated clones. Use it for parallel project checkouts, coding-agent workspaces, and repositories with submodules. Checkouts remain ordinary Git repositories with their original `origin` URL.
+
+**[Documentation](https://bhouston.github.io/gix/) · [CLI reference](https://bhouston.github.io/gix/docs/cli) · [Agent setup](https://bhouston.github.io/gix/docs/agents)**
+
+## Features
+
+- Reuse local mirrors across repeated remote clones.
+- Consolidate existing repositories, including local commits and discoverable submodules.
+- Prepare nested submodules and submodules inside new worktrees from mirrors.
+- Inspect storage sharing with optional `--stats` reports.
+- Refresh, prune, and clear the store while preserving consumers' Git objects.
+- Use the TypeScript core library in your own Node.js tools.
+
+Requires **Node.js 22+ and Git**. Tested on macOS and Linux. Git LFS is optional for repositories that use it.
+
+## Installation
 
 ```sh
-pnpm install
-pnpm build
-node packages/cli/dist/bin.js clone https://github.com/you/project.git
+npm install --global @bhouston/gitx
 ```
 
-To inspect storage sharing for an optimized clone, opt in to a short report:
+The executable is `gitx`. The source repository is [bhouston/gix](https://github.com/bhouston/gix).
+
+## Quick start
 
 ```sh
-node packages/cli/dist/bin.js --stats clone https://github.com/you/project.git
-node packages/cli/dist/bin.js cache ./project --stats
+# Clone the same remote into two independent working copies.
+gitx clone https://github.com/bhouston/gix.git gix-main
+gitx --stats clone https://github.com/bhouston/gix.git gix-review
+
+# Consolidate a repository you already have.
+gitx cache ./gix-main --stats
+
+# Inspect the store and your setup.
+gitx store
+gitx doctor
 ```
 
-The report goes to stderr after an optimized clone or cache adoption. It shows whether the mirror was reused or created, bytes shared through hard links, and bytes copied. Clone output estimates duplicate pack bytes avoided, with a first-use caveat: creating the mirror may mean no net space savings versus a plain clone yet. Cache output compares private packed-file bytes before and after adoption. The report counts local `.pack`, `.idx`, and `.rev` files; loose Git objects and Git LFS are excluded. These are logical file-size estimates, not measured disk blocks reclaimed. Reflinks may share physical storage without matching inode IDs. Normal commands skip this extra scan, and a plain Git fallback does not print a stats report.
+Use ordinary Git inside either checkout. gitx also forwards Git commands such as `gitx status`, `gitx diff`, and `gitx -C gix-main log --oneline`.
 
-Set `GITX_STORE` to choose a local store for a single invocation, or explicitly set `gitx.store` in Git configuration:
+### Submodules and worktrees
+
+```sh
+gitx clone --recurse-submodules https://github.com/you/project.git
+cd project
+gitx submodule update --init --recursive
+gitx worktree add -b review ../project-review
+```
+
+Supported submodule updates prepare missing module repositories from mirrors before Git checks them out. `worktree add` shares the main repository's common object database and initializes supported submodules in the new worktree. With `--no-checkout`, initialization waits for a later submodule update. `submodule add` uses Git, then caches the added module.
+
+Unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, use ordinary Git behavior. See the [CLI reference](https://bhouston.github.io/gix/docs/cli) for the supported paths.
+
+### Storage reports
+
+Reports go to stderr and show whether a mirror was reused or created, bytes shared through hard links, and bytes copied. Clone savings estimate duplicate pack bytes avoided; cache savings compare private pack bytes before and after adoption.
+
+Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects and Git LFS. These are logical file-size estimates, not measured disk blocks reclaimed; reflinks can share physical storage without matching inode IDs. Creating a mirror on first use may yield no net savings yet. Plain Git fallback does not print a report.
+
+## Configuration
+
+The default store is a cache directory in your home directory. Choose a location on the same filesystem as your repositories:
 
 ```sh
 git config --global gitx.store "$HOME/.cache/gitx"
 ```
 
-gitx does not automatically modify global Git configuration. `gitx store set <path>` explicitly writes both `gitx.store` and `lfs.storage`; use it only if you want the global LFS setting. Keep the store on the same filesystem as your working copies to allow Git's local clone to share object files through hard links. A different filesystem may result in copies.
+Installation and cloning do not change global Git configuration. `gitx store set <path>` is an explicit alternative that sets **both** global `gitx.store` and `lfs.storage`.
 
-`gitx.enabled=false` disables optimization, `gitx.gitPath` selects the real Git executable, and `gitx.linkMode` accepts `auto`, `hardlink`, `reflink`, or `copy`. Use `GITX_DISABLE=1` for a one-command bypass. The [original overlay design](docs/DESIGN.md) is preserved alongside the [implementation plan](docs/PLAN.md).
+| Setting              | Purpose                                                                   |
+| -------------------- | ------------------------------------------------------------------------- |
+| `GITX_STORE`         | Override the store path for an invocation                                 |
+| `GITX_DISABLE=1`     | Forward to Git without optimization                                       |
+| `gitx.store`         | Store path in Git configuration                                           |
+| `gitx.enabled=false` | Disable optimization persistently                                         |
+| `gitx.gitPath`       | Select the Git executable                                                 |
+| `gitx.linkMode`      | Choose `auto`, `hardlink`, `reflink`, or `copy` for eligible object files |
 
-## Workspace
+## How storage stays independent
 
-| Package                  | Purpose                                              |
-| ------------------------ | ---------------------------------------------------- |
-| `@bhouston/gitx-core`    | Git operations, mirrors, and storage logic           |
-| `@bhouston/gitx`         | CLI parsing, Git forwarding, and command integration |
-| `@bhouston/gitx-website` | Docusaurus documentation and project site            |
+Each consumer has its own Git object directory and uses no Git alternates. Hard links let multiple filenames refer to the same stored bytes: deleting the mirror removes its links while the consumer's links remain valid. Existing Git repositories remain usable after the store is deleted. Worktrees retain Git's normal dependency on their common repository.
+
+Keep the store on the same filesystem as your working copies to enable hard links. Cross-filesystem copies and later Git maintenance can reduce sharing. The first clone creates a mirror, so savings generally come from reusing it across consumers.
+
+Git LFS is separate. `gitx store clear` also removes the store's LFS directory; objects held only there may need to be fetched again. Cache adoption retains existing local LFS objects. Clearing requires the `.gitx-store` marker and refuses directories with unrelated files. Store mutations are serialized with locks.
+
+Read the [storage model](https://bhouston.github.io/gix/docs/how-it-works) and [safety guide](https://bhouston.github.io/gix/docs/safety) for details.
+
+## Packages
+
+| Package                                                                  | Purpose                                                         |
+| ------------------------------------------------------------------------ | --------------------------------------------------------------- |
+| [@bhouston/gitx](https://www.npmjs.com/package/@bhouston/gitx)           | CLI interface, Git forwarding, and clidoc/OpenCLI support       |
+| [@bhouston/gitx-core](https://www.npmjs.com/package/@bhouston/gitx-core) | Git operations, mirrors, and storage API                        |
+| [Website](https://github.com/bhouston/gix/tree/main/packages/website)    | Docusaurus documentation and project site; not published to npm |
+
+For scripts and applications:
 
 ```sh
+npm install @bhouston/gitx-core
+```
+
+```ts
+import { createGitx } from '@bhouston/gitx-core';
+
+const gitx = createGitx({ cwd: process.cwd() });
+process.exitCode = await gitx.run(['clone', 'https://github.com/bhouston/gix.git']);
+```
+
+See the [core API guide](https://github.com/bhouston/gix/tree/main/packages/core). After installing globally, the [agent setup guide](https://bhouston.github.io/gix/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `gitx` explicitly.
+
+## Development
+
+```sh
+pnpm install --frozen-lockfile
 pnpm build
-pnpm test
-pnpm lint
-pnpm format:check
-pnpm docs:build
+pnpm check
 pnpm test:proof
 ```
 
-The core is tested with Vitest and the CLI with `vitest-command-line`. The proof script uses temporary loopback Git remotes to exercise concurrent clones and store deletion. See the [documentation](packages/website/docs/index.md) for usage, the [safety model](packages/website/docs/safety.md), and [development notes](packages/website/docs/development.md).
+`pnpm check` runs Oxlint, Oxfmt, TypeScript checks, Vitest, workflow tests, npm package checks, and the documentation build. CLI tests use `vitest-command-line`. The proof script creates temporary loopback Git remotes, verifies concurrent clones share object files, deletes the store, and checks that consumers remain valid.
 
-After installing gitx globally, use the [agent setup guide](packages/website/docs/agents.md) for copyable `AGENTS.md` and `CLAUDE.md` instructions. Agents call `gitx` explicitly; no separate clone or submodule helper is needed.
+See [development documentation](https://bhouston.github.io/gix/docs/development), the [implementation plan](https://github.com/bhouston/gix/blob/main/docs/PLAN.md), and [release setup](https://github.com/bhouston/gix/blob/main/RELEASING.md).
 
-## Safety
+## Contributing
 
-The clone's object directory is independent of the mirror and does not use Git alternates. Removing the mirror leaves already cloned Git objects intact. Git LFS storage is separate: `gitx store clear` removes stored LFS objects too, which may require fetching them again. Unsupported clone forms, including local paths and shallow or partial clones, use ordinary Git behavior.
+See [CONTRIBUTING.md](https://github.com/bhouston/gix/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gix/releases) for release notes.
 
-gitx marks its store with `.gitx-store`. `gitx store clear` refuses unmarked directories and directories containing unrelated files. Store mutations are serialized so clearing cannot race an active mirror update.
+## License
+
+[MIT](https://github.com/bhouston/gix/blob/main/LICENSE)
+
+## Author
+
+[Ben Houston](https://ben3d.ca)
