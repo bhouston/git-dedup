@@ -4,7 +4,7 @@ title: Why gitx?
 
 ## Automatic sharing, independent checkouts
 
-gitx is designed for people who keep several checkouts of the same repositories: parallel development branches, coding-agent workspaces, and projects with repeated submodule dependencies. We prefer its approach for these workflows because sharing is automatic and the resulting Git repositories can outlive the cache.
+gitx was developed for short-lived repositories in agentic workflows, where agents repeatedly create checkouts or use worktrees with submodules. Reusing Git objects reduces repeated downloads and duplicate object storage as new workspaces spin up. We prefer its approach for these workflows because sharing is automatic and the resulting Git repositories can outlive the cache.
 
 ```sh
 gitx clone https://github.com/you/project.git project-main

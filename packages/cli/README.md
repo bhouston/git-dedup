@@ -11,6 +11,8 @@ _A Git command-line wrapper that shares local object storage across checkouts._
 
 Clone repositories, prepare submodules, and create worktrees using a local mirror store. Consumers remain ordinary Git repositories with their real remote URLs. Powered by [@bhouston/gitx-core](https://www.npmjs.com/package/@bhouston/gitx-core).
 
+Optimized for short-lived repositories in agentic workflows. gitx reuses Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces.
+
 **[Documentation](https://bhouston.github.io/gix/) · [Source](https://github.com/bhouston/gix) · [Agent setup](https://bhouston.github.io/gix/docs/agents)**
 
 ## Installation

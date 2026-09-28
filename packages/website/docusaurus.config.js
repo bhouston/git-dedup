@@ -1,6 +1,6 @@
 module.exports = {
   title: 'gitx',
-  tagline: 'Shared Git storage, ordinary Git repositories.',
+  tagline: 'Optimized for short-lived repositories in agentic workflows.',
   favicon: 'img/gitx-mark.svg',
   url: process.env.SITE_URL ?? 'https://bhouston.github.io',
   baseUrl: process.env.BASE_URL ?? '/gix/',
