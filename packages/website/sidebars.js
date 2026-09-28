@@ -1,3 +1,3 @@
 module.exports = {
-  docs: ['index', 'cli', 'agents', 'how-it-works', 'safety', 'development', 'roadmap'],
+  docs: ['index', 'why-gitx', 'cli', 'agents', 'how-it-works', 'safety', 'development', 'roadmap'],
 };
