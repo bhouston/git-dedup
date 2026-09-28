@@ -369,3 +369,21 @@ it('retains local LFS objects when adopting and deleting the store', async () =>
   expect(await readFile(join(local, 'object'), 'utf8')).toBe('locally authored LFS content');
   git(['fsck', '--full'], consumer);
 });
+
+it.each([
+  { EDITOR: 'vi' },
+  { VISUAL: 'code --wait' },
+  { GIT_SSH_COMMAND: 'ssh' },
+  { GIT_ASKPASS: '/usr/bin/false' },
+  { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.abbrev', GIT_CONFIG_VALUE_0: '9' },
+])('keeps mirror sharing with caller environment %j', async (callerEnvironment) => {
+  const { root, remote, store } = await fixture();
+  const api = createGitx({ cwd: root, env: { ...testEnv(root, store), ...callerEnvironment } });
+  expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
+  expect((await api.storeInfo()).mirrorCount).toBe(1);
+  const consumer = join(root, 'consumer');
+  await expectLinkedPack(store, remote, join(consumer, '.git'));
+  await api.clear();
+  git(['fsck', '--full'], consumer);
+  expect(git(['show', 'HEAD:hello.txt'], consumer)).toBe('hello');
+});
