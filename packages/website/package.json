@@ -1,0 +1,17 @@
+{
+  "name": "@bhouston/gitx-website",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "docusaurus start --port 4000",
+    "build": "docusaurus build",
+    "serve": "docusaurus serve --port 4000",
+    "clear": "docusaurus clear"
+  },
+  "dependencies": {
+    "@docusaurus/core": "^3.10.2",
+    "@docusaurus/preset-classic": "^3.10.2",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0"
+  }
+}

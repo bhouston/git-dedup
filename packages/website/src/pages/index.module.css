@@ -1,0 +1,331 @@
+.hero {
+  background:
+    radial-gradient(circle at 82% 15%, #dcf2e5 0, transparent 36%), linear-gradient(135deg, #f8f7ed 0%, #eaf3ed 100%);
+  border-bottom: 1px solid #d5e5da;
+}
+.heroInner {
+  max-width: 1200px;
+  margin: auto;
+  padding: 7rem 1.5rem 6rem;
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 5rem;
+  align-items: center;
+}
+.kicker {
+  color: #287b62;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  margin-bottom: 1.5rem;
+}
+.dot {
+  display: inline-block;
+  width: 0.55rem;
+  height: 0.55rem;
+  margin-right: 0.55rem;
+  border-radius: 50%;
+  background: #2bb588;
+}
+.hero h1 {
+  font-size: clamp(3.5rem, 7vw, 6.8rem);
+  line-height: 0.98;
+  letter-spacing: -0.065em;
+  color: #142a32;
+  margin-bottom: 2rem;
+}
+.hero h1 em {
+  color: #198469;
+  font-style: normal;
+}
+.lead {
+  color: #415b58;
+  font-size: 1.32rem;
+  line-height: 1.55;
+  max-width: 36rem;
+}
+.actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1.6rem;
+  margin-top: 2.5rem;
+}
+.primary {
+  display: inline-flex;
+  justify-content: space-between;
+  gap: 1.4rem;
+  align-items: center;
+  padding: 0.9rem 1.2rem;
+  border-radius: 0.55rem;
+  color: white;
+  background: #142a32;
+  font-weight: 700;
+}
+.primary:hover {
+  color: white;
+  background: #246653;
+  text-decoration: none;
+}
+.secondary {
+  color: #142a32;
+  font-weight: 700;
+}
+.secondary:hover {
+  color: #198469;
+  text-decoration: none;
+}
+.platform {
+  margin-top: 2.5rem;
+  color: #6e817a;
+  font-size: 0.86rem;
+}
+.diagram {
+  margin: 0;
+  background: #142a32;
+  color: #f7f4e9;
+  border-radius: 1.2rem;
+  padding: 1.45rem;
+  box-shadow: 0 28px 65px #153d3040;
+  transform: rotate(1.2deg);
+}
+.diagramHeader {
+  font:
+    700 0.7rem ui-monospace,
+    monospace;
+  letter-spacing: 0.15em;
+  color: #88a9a0;
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 1.5rem;
+  border-bottom: 1px solid #3d5656;
+}
+.diagramHeader span {
+  color: #76dfb8;
+  letter-spacing: 0.2em;
+}
+.remote,
+.mirror {
+  display: flex;
+  gap: 1rem;
+  align-items: center;
+  padding: 1rem;
+  border: 1px solid #55706b;
+  border-radius: 0.7rem;
+}
+.remote {
+  margin-top: 1.5rem;
+}
+.mirror {
+  border-color: #5ec99e;
+  background: #1e403c;
+}
+.remote small,
+.mirror small {
+  display: block;
+  color: #93bbb0;
+  font:
+    700 0.65rem ui-monospace,
+    monospace;
+  letter-spacing: 0.13em;
+}
+.remote strong,
+.mirror strong {
+  display: block;
+  font-size: 0.9rem;
+  margin-top: 0.25rem;
+}
+.nodeIcon {
+  display: grid;
+  place-items: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 0.5rem;
+  color: #b5efcd;
+  background: #2d5750;
+  font-size: 1.2rem;
+}
+.connector {
+  text-align: center;
+  color: #72e0bd;
+  font-size: 1.4rem;
+  line-height: 2.5rem;
+}
+.shared {
+  margin-left: auto;
+  border: 1px solid #76d7ae;
+  border-radius: 2rem;
+  padding: 0.22rem 0.5rem;
+  color: #a5f0c9;
+  font-size: 0.7rem;
+}
+.branches {
+  display: flex;
+  justify-content: space-around;
+  color: #72e0bd;
+  font-size: 1.5rem;
+  margin: 0.5rem 0;
+}
+.clones {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.55rem;
+}
+.clones span {
+  text-align: center;
+  padding: 0.85rem 0.15rem;
+  border: 1px solid #55706b;
+  border-radius: 0.5rem;
+  font:
+    700 0.75rem ui-monospace,
+    monospace;
+}
+.diagram p {
+  color: #93bbb0;
+  text-align: center;
+  font:
+    0.72rem ui-monospace,
+    monospace;
+  margin: 1.4rem 0 0.25rem;
+}
+.intro {
+  max-width: 1200px;
+  margin: auto;
+  padding: 6rem 1.5rem 3rem;
+  display: grid;
+  grid-template-columns: 1.2fr 0.8fr;
+  align-items: end;
+  gap: 5rem;
+}
+.intro h2,
+.callout h2 {
+  font-size: clamp(2.4rem, 4vw, 4rem);
+  line-height: 1.1;
+  letter-spacing: -0.05em;
+}
+.intro > p {
+  color: #526660;
+  font-size: 1.15rem;
+  line-height: 1.7;
+}
+.cards {
+  max-width: 1200px;
+  margin: auto;
+  padding: 0 1.5rem 6rem;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem;
+}
+.card {
+  border: 1px solid #d8e4db;
+  border-radius: 0.85rem;
+  padding: 2rem;
+  background: #fff;
+}
+.card > span {
+  color: #2a9479;
+  font:
+    700 0.8rem ui-monospace,
+    monospace;
+}
+.card h3 {
+  margin-top: 2.4rem;
+  letter-spacing: -0.025em;
+}
+.card p {
+  margin-bottom: 0;
+  color: #5b6c68;
+  line-height: 1.6;
+}
+.callout {
+  background: #e5f0e8;
+  padding: 5rem max(1.5rem, calc((100% - 1152px) /2));
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4rem;
+  align-items: center;
+}
+.callout p:not(.kicker) {
+  color: #526660;
+  line-height: 1.7;
+}
+.callout a {
+  font-weight: 700;
+}
+.callout pre {
+  background: #142a32;
+  color: #d1f5e2;
+  padding: 2rem;
+  border-radius: 0.8rem;
+  box-shadow: 0 20px 40px #153d3029;
+  overflow: auto;
+  font-size: 0.95rem;
+}
+.note {
+  max-width: 1200px;
+  margin: auto;
+  padding: 3rem 1.5rem;
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  color: #526660;
+}
+.note strong {
+  color: #142a32;
+  white-space: nowrap;
+}
+.note a {
+  white-space: nowrap;
+  margin-left: auto;
+  font-weight: 700;
+}
+@media (max-width: 900px) {
+  .heroInner,
+  .intro,
+  .callout {
+    grid-template-columns: 1fr;
+    gap: 2rem;
+  }
+  .heroInner {
+    padding-top: 4rem;
+  }
+  .diagram {
+    transform: none;
+  }
+  .cards {
+    grid-template-columns: 1fr;
+  }
+  .card h3 {
+    margin-top: 1rem;
+  }
+  .note {
+    display: block;
+  }
+  .note > * {
+    display: block;
+    margin: 0.5rem 0;
+  }
+}
+[data-theme='dark'] .hero {
+  background: linear-gradient(135deg, #102221, #19372f);
+  border-color: #2c4c43;
+}
+[data-theme='dark'] .hero h1,
+[data-theme='dark'] .secondary,
+[data-theme='dark'] .note strong {
+  color: #f5f4ea;
+}
+[data-theme='dark'] .lead,
+[data-theme='dark'] .intro > p,
+[data-theme='dark'] .card p,
+[data-theme='dark'] .callout p:not(.kicker),
+[data-theme='dark'] .note {
+  color: #b6cbc2;
+}
+[data-theme='dark'] .card {
+  background: #182c2a;
+  border-color: #33534b;
+}
+[data-theme='dark'] .callout {
+  background: #19372f;
+}

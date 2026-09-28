@@ -1,0 +1,50 @@
+{
+  "name": "@bhouston/gitx",
+  "version": "0.1.0",
+  "description": "A Git wrapper that shares repository object storage",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/bhouston/gix.git",
+    "directory": "packages/cli"
+  },
+  "bin": {
+    "gitx": "./dist/bin.js"
+  },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json && chmod +x dist/bin.js",
+    "test": "vitest run",
+    "tsc": "tsc --noEmit -p tsconfig.json",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@bhouston/gitx-core": "workspace:*",
+    "@clidoc/core": "^0.1.0",
+    "@clidoc/yargs": "^0.1.0",
+    "yargs": "^18.0.0",
+    "yargs-file-commands": "^2.0.1"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@types/yargs": "^17.0.35",
+    "vitest-command-line": "^0.9.1"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

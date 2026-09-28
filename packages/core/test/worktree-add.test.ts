@@ -1,0 +1,107 @@
+import { it, expect } from 'vitest';
+import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, rm, access } from 'node:fs/promises';
+import { createServer } from 'node:net';
+import { join } from 'node:path';
+import { tmpdir } from 'node:os';
+import { createGitx } from '../src/index.js';
+
+it('intercepts worktree add and initializes independent mirror-backed submodules', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'gitx-worktree-'));
+  const env = {
+    ...process.env,
+    GIT_CONFIG_GLOBAL: join(root, 'config'),
+    GIT_CONFIG_NOSYSTEM: '1',
+    GITX_STORE: join(root, 'store'),
+    GITX_ACTIVE: undefined,
+    GITX_DISABLE: undefined,
+  };
+  const git = (at: string, ...args: string[]) =>
+    execFileSync('git', args, { cwd: at, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  let daemon: ChildProcess | undefined;
+  try {
+    const team = join(root, 'team');
+    await mkdir(team);
+    for (const name of ['library', 'project']) {
+      const path = join(team, name);
+      await mkdir(path);
+      git(path, 'init', '-b', 'main');
+      git(path, 'config', 'user.name', 'Test');
+      git(path, 'config', 'user.email', 'test@example.invalid');
+      await writeFile(join(path, 'README'), `${name}\n`);
+      git(path, 'add', '.');
+      git(path, 'commit', '-m', 'initial');
+    }
+    const listener = createServer();
+    await new Promise<void>((resolve, reject) => {
+      listener.once('error', reject);
+      listener.listen(0, '127.0.0.1', resolve);
+    });
+    const address = listener.address();
+    if (!address || typeof address === 'string') throw new Error('Expected TCP address');
+    const port = address.port;
+    await new Promise<void>((resolve) => listener.close(() => resolve()));
+    daemon = spawn(
+      'git',
+      [
+        'daemon',
+        '--reuseaddr',
+        '--export-all',
+        '--verbose',
+        '--listen=127.0.0.1',
+        `--port=${port}`,
+        `--base-path=${root}`,
+        root,
+      ],
+      { env, stdio: ['ignore', 'ignore', 'pipe'] },
+    );
+    await new Promise<void>((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Git daemon startup timed out')), 10000);
+      daemon!.once('error', reject);
+      daemon!.once('exit', (code) => reject(new Error(`Git daemon exited ${code}`)));
+      daemon!.stderr!.on('data', (chunk) => {
+        if (String(chunk).includes('Ready to rumble')) {
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+    const project = join(team, 'project');
+    const remote = `git://127.0.0.1:${port}/team/library`;
+    git(project, 'submodule', 'add', remote, 'deps/library');
+    git(project, 'commit', '-am', 'add library');
+    const api = createGitx({ cwd: root, env });
+    expect(await api.run(['clone', `git://127.0.0.1:${port}/team/project`, 'consumer'])).toBe(0);
+    const consumer = join(root, 'consumer');
+    const worker = join(root, 'worker');
+    expect(await api.run(['-C', consumer, 'worktree', 'add', '--detach', worker, 'HEAD'])).toBe(0);
+    const module = join(worker, 'deps/library');
+    expect(await readFile(join(module, 'README'), 'utf8')).toBe('library\n');
+    const moduleGitdir = git(module, 'rev-parse', '--absolute-git-dir');
+    expect(moduleGitdir).toContain('/worktrees/worker/modules/deps/library');
+    const packs = join(moduleGitdir, 'objects', 'pack');
+    const pack = (await readdir(packs)).find((name) => name.endsWith('.pack'))!;
+    const mirrorPacks = join(env.GITX_STORE, 'mirrors', `127.0.0.1_${port}`, 'team', 'library.git', 'objects', 'pack');
+    expect((await stat(join(packs, pack))).ino).toBe((await stat(join(mirrorPacks, pack))).ino);
+    await access(join(packs, pack.replace('.pack', '.keep')));
+    await expect(access(join(moduleGitdir, 'objects', 'info', 'alternates'))).rejects.toThrow();
+    // Native no-checkout semantics must survive interception.
+    const emptyWorker = join(root, 'empty-worker');
+    expect(await api.run(['-C', consumer, 'worktree', 'add', '--detach', '--no-checkout', emptyWorker, 'HEAD'])).toBe(
+      0,
+    );
+    await expect(access(join(emptyWorker, '.gitmodules'))).rejects.toThrow();
+    await api.clear();
+    git(consumer, 'fsck', '--full');
+    git(worker, 'fsck', '--full');
+    git(module, 'fsck', '--full');
+    expect(git(module, 'show', 'HEAD:README')).toBe('library');
+  } finally {
+    if (daemon && daemon.exitCode === null) {
+      const closed = new Promise<void>((resolve) => daemon!.once('exit', () => resolve()));
+      daemon.kill();
+      await closed;
+    }
+    await rm(root, { recursive: true, force: true });
+  }
+});

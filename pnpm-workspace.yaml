@@ -1,0 +1,8 @@
+packages:
+  - 'packages/*'
+allowBuilds:
+  core-js: false
+  esbuild: true
+minimumReleaseAgeExclude:
+  - vitest-command-line
+  - yargs-file-commands
