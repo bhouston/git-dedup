@@ -15,7 +15,7 @@ The release configuration publishes `@bhouston/gitx-core` first, then `@bhouston
 
 1. Create or claim both npm package names under the `bhouston` npm account. For first publication, npm trusted publishing may require a package to be created through npm's initial publishing flow before the trusted publisher can be configured. Check the current npm instructions for scoped package creation.
 2. On npmjs.com, configure **Trusted Publisher** for `@bhouston/gitx-core` and `@bhouston/gitx`. Choose GitHub Actions, GitHub user `bhouston`, repository `gix`, workflow filename `release.yml`, and environment `npm`. Enable direct `npm publish` as an allowed action. The workflow uses OIDC (`id-token: write`), not `NPM_TOKEN`. [npm's trusted publishing guide](https://docs.npmjs.com/trusted-publishers/) describes these settings.
-3. Create the GitHub `npm` environment and restrict it to `main` and authorized maintainers. Enable Pages with GitHub Actions as its source if the site should deploy at `https://bhouston.github.io/gix/`.
+3. Create the GitHub `npm` environment and restrict it to `main` and authorized maintainers. Enable Pages with GitHub Actions as its source and set its custom domain to `gitx.ben3d.ca` to deploy at `https://gitx.ben3d.ca/`.
 4. Protect `main` with PRs and the passing checks the four `ci` matrix checks (macOS/Linux with Node 22/26) and `contribution` once the initial bootstrap is pushed.
 5. Before the first actual release, run a dry run and `pnpm package:check`. Confirm the proposed version does not already exist on npm.
 
