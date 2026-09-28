@@ -39,9 +39,27 @@ export default function Home() {
               <em>Store once.</em>
             </h1>
             <p className={styles.lead}>
-              Optimized for short-lived repositories in agentic workflows. <strong>Automatically</strong> reuse Git
-              objects across repeated checkouts and worktrees with submodules, with fewer downloads and less duplicate
-              object storage.
+              gitx automatically reuses Git objects across checkouts through a local mirror store. Built for short-lived
+              coding-agent workspaces, it gives you independent checkouts with fewer downloads and less duplicate
+              storage.
+            </p>
+            <pre className={styles.example}>
+              <code>{`# Automatically create or reuse a mirror in the default store: ~/.cache/gitx.
+gitx clone https://github.com/you/project.git project
+
+# Another checkout reuses the mirror instead of downloading it all again.
+gitx clone https://github.com/you/project.git project-review
+cd project-review
+
+# All normal Git commands work in the checkout.
+git status
+git diff
+git log --oneline`}</code>
+            </pre>
+            <p className={styles.performance}>
+              For large repositories, reusing a populated store can turn a{' '}
+              <strong>100+ second fresh clone into a near-instant repeat checkout</strong>. The first clone fills the
+              mirror; actual times depend on remote updates, disk speed, and the files Git needs to check out.
             </p>
             <div className={styles.actions}>
               <Link className={styles.primary} to="/docs">
@@ -53,41 +71,6 @@ export default function Home() {
             </div>
             <p className={styles.platform}>TypeScript · Node.js 22+ · macOS and Linux</p>
           </div>
-          <figure
-            className={styles.diagram}
-            aria-label="One remote mirrored into a local store and shared by three clones"
-          >
-            <div className={styles.diagramHeader}>
-              GIT OBJECT FLOW <span>● ● ●</span>
-            </div>
-            <div className={styles.remote}>
-              <span className={styles.nodeIcon}>↗</span>
-              <div>
-                <small>REMOTE</small>
-                <strong>github.com/you/project</strong>
-              </div>
-            </div>
-            <div className={styles.connector}>↓</div>
-            <div className={styles.mirror}>
-              <span className={styles.nodeIcon}>◆</span>
-              <div>
-                <small>LOCAL STORE</small>
-                <strong>one bare mirror</strong>
-              </div>
-              <span className={styles.shared}>shared</span>
-            </div>
-            <div className={styles.branches}>
-              <span>↙</span>
-              <span>↓</span>
-              <span>↘</span>
-            </div>
-            <div className={styles.clones}>
-              <span>clone A</span>
-              <span>clone B</span>
-              <span>clone C</span>
-            </div>
-            <p>Independent checkouts. Shared object storage.</p>
-          </figure>
         </div>
       </header>
       <main>
@@ -126,9 +109,41 @@ export default function Home() {
             </p>
             <Link to="/docs">Read the getting started guide →</Link>
           </div>
-          <pre>
-            <code>{`gitx clone https://github.com/you/project.git\ncd project\ngit remote -v`}</code>
-          </pre>
+          <figure
+            className={styles.diagram}
+            aria-label="One remote mirrored into a local store and shared by three clones"
+          >
+            <div className={styles.diagramHeader}>
+              GIT OBJECT FLOW <span>● ● ●</span>
+            </div>
+            <div className={styles.remote}>
+              <span className={styles.nodeIcon}>↗</span>
+              <div>
+                <small>REMOTE</small>
+                <strong>github.com/you/project</strong>
+              </div>
+            </div>
+            <div className={styles.connector}>↓</div>
+            <div className={styles.mirror}>
+              <span className={styles.nodeIcon}>◆</span>
+              <div>
+                <small>LOCAL STORE</small>
+                <strong>one bare mirror</strong>
+              </div>
+              <span className={styles.shared}>shared</span>
+            </div>
+            <div className={styles.branches}>
+              <span>↙</span>
+              <span>↓</span>
+              <span>↘</span>
+            </div>
+            <div className={styles.clones}>
+              <span>clone A</span>
+              <span>clone B</span>
+              <span>clone C</span>
+            </div>
+            <p>Independent checkouts. Shared object storage.</p>
+          </figure>
         </section>
         <section className={styles.note}>
           <strong>Designed to be removable.</strong>

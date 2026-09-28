@@ -7,11 +7,23 @@
 [![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-_A Git wrapper for independent checkouts backed by shared local storage._
+gitx automatically reuses Git objects across checkouts through a local mirror store. Built for short-lived coding-agent workspaces, it gives you independent checkouts with fewer downloads and less duplicate storage.
 
-gitx keeps a bare mirror for each supported remote and shares Git object files with repeated clones. Use it for parallel project checkouts, coding-agent workspaces, and repositories with submodules. Checkouts remain ordinary Git repositories with their original `origin` URL.
+```sh
+# Automatically create or reuse a mirror in the default store: ~/.cache/gitx.
+gitx clone https://github.com/you/project.git project
 
-Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces. gitx manages mirror creation, updates, and reuse for you, removing the bookkeeping of maintaining mirrors and passing reference paths to each clone.
+# Another checkout reuses the mirror instead of downloading it all again.
+gitx clone https://github.com/you/project.git project-review
+cd project-review
+
+# All normal Git commands work in the checkout.
+git status
+git diff
+git log --oneline
+```
+
+For large repositories, reusing a populated store can turn a **100+ second fresh clone into a near-instant repeat checkout**. The first clone fills the mirror; actual times depend on remote updates, disk speed, and the files Git needs to check out.
 
 **[Documentation](https://gitx.ben3d.ca/) · [CLI reference](https://gitx.ben3d.ca/docs/cli) · [Agent setup](https://gitx.ben3d.ca/docs/agents)**
 
