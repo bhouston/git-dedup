@@ -2,8 +2,8 @@
 
 [![npm version](https://img.shields.io/npm/v/@bhouston/gitx.svg)](https://www.npmjs.com/package/@bhouston/gitx)
 [![npm downloads](https://img.shields.io/npm/dm/@bhouston/gitx.svg)](https://www.npmjs.com/package/@bhouston/gitx)
-[![CI](https://github.com/bhouston/gix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gix/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gix/blob/main/LICENSE)
+[![CI](https://github.com/bhouston/gitx/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gitx/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gitx/blob/main/LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
@@ -13,7 +13,7 @@ Clone repositories, prepare submodules, and create worktrees using a local mirro
 
 Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces. gitx manages mirror creation, updates, and reuse for you, removing the bookkeeping of maintaining mirrors and passing reference paths to each clone.
 
-**[Documentation](https://gitx.ben3d.ca/) · [Source](https://github.com/bhouston/gix) · [Agent setup](https://gitx.ben3d.ca/docs/agents)**
+**[Documentation](https://gitx.ben3d.ca/) · [Source](https://github.com/bhouston/gitx) · [Agent setup](https://gitx.ben3d.ca/docs/agents)**
 
 ## Installation
 
@@ -28,14 +28,14 @@ gitx --help
 
 ```sh
 # Repeated clones reuse the remote's mirror.
-gitx clone https://github.com/bhouston/gix.git gix-main
-gitx --stats clone https://github.com/bhouston/gix.git gix-review
+gitx clone https://github.com/bhouston/gitx.git gitx-main
+gitx --stats clone https://github.com/bhouston/gitx.git gitx-review
 
 # Adopt an existing repository and its discoverable submodules.
-gitx cache ./gix-main --stats
+gitx cache ./gitx-main --stats
 
 # Ordinary Git commands also work through gitx.
-gitx -C gix-main status
+gitx -C gitx-main status
 ```
 
 ### Submodules and worktrees
@@ -66,8 +66,8 @@ Other Git commands and unsupported clone forms pass through to Git. Local path c
 ### Optional storage reports
 
 ```sh
-gitx --stats clone https://github.com/bhouston/gix.git gix-extra
-gitx cache ./gix-extra --stats
+gitx --stats clone https://github.com/bhouston/gitx.git gitx-extra
+gitx cache ./gitx-extra --stats
 ```
 
 Reports go to stderr and show whether a mirror was reused or created, bytes shared through hard links, and bytes copied. Clone savings estimate duplicate pack bytes avoided; cache savings compare private pack bytes before and after adoption.
@@ -117,11 +117,11 @@ The [agent setup guide](https://gitx.ben3d.ca/docs/agents) has copyable instruct
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/bhouston/gix/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gix/releases) for release notes.
+See [CONTRIBUTING.md](https://github.com/bhouston/gitx/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gitx/releases) for release notes.
 
 ## License
 
-[MIT](https://github.com/bhouston/gix/blob/main/LICENSE)
+[MIT](https://github.com/bhouston/gitx/blob/main/LICENSE)
 
 ## Author
 

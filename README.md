@@ -2,8 +2,8 @@
 
 [![npm version](https://img.shields.io/npm/v/@bhouston/gitx.svg)](https://www.npmjs.com/package/@bhouston/gitx)
 [![npm downloads](https://img.shields.io/npm/dm/@bhouston/gitx.svg)](https://www.npmjs.com/package/@bhouston/gitx)
-[![CI](https://github.com/bhouston/gix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gix/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gix/blob/main/LICENSE)
+[![CI](https://github.com/bhouston/gitx/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gitx/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gitx/blob/main/LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
@@ -32,24 +32,24 @@ Requires **Node.js 22+ and Git**. Tested on macOS and Linux. Git LFS is optional
 npm install --global @bhouston/gitx
 ```
 
-The executable is `gitx`. The source repository is [bhouston/gix](https://github.com/bhouston/gix).
+The executable is `gitx`. The source repository is [bhouston/gitx](https://github.com/bhouston/gitx).
 
 ## Quick start
 
 ```sh
 # Clone the same remote into two independent working copies.
-gitx clone https://github.com/bhouston/gix.git gix-main
-gitx --stats clone https://github.com/bhouston/gix.git gix-review
+gitx clone https://github.com/bhouston/gitx.git gitx-main
+gitx --stats clone https://github.com/bhouston/gitx.git gitx-review
 
 # Consolidate a repository you already have.
-gitx cache ./gix-main --stats
+gitx cache ./gitx-main --stats
 
 # Inspect the store and your setup.
 gitx store
 gitx doctor
 ```
 
-Use ordinary Git inside either checkout. gitx also forwards Git commands such as `gitx status`, `gitx diff`, and `gitx -C gix-main log --oneline`.
+Use ordinary Git inside either checkout. gitx also forwards Git commands such as `gitx status`, `gitx diff`, and `gitx -C gitx-main log --oneline`.
 
 ### Submodules and worktrees
 
@@ -105,7 +105,7 @@ Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety gu
 | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
 | [@bhouston/gitx](https://www.npmjs.com/package/@bhouston/gitx)           | CLI interface, Git forwarding, and clidoc/OpenCLI support       |
 | [@bhouston/gitx-core](https://www.npmjs.com/package/@bhouston/gitx-core) | Git operations, mirrors, and storage API                        |
-| [Website](https://github.com/bhouston/gix/tree/main/packages/website)    | Docusaurus documentation and project site; not published to npm |
+| [Website](https://github.com/bhouston/gitx/tree/main/packages/website)   | Docusaurus documentation and project site; not published to npm |
 
 For scripts and applications:
 
@@ -117,10 +117,10 @@ npm install @bhouston/gitx-core
 import { createGitx } from '@bhouston/gitx-core';
 
 const gitx = createGitx({ cwd: process.cwd() });
-process.exitCode = await gitx.run(['clone', 'https://github.com/bhouston/gix.git']);
+process.exitCode = await gitx.run(['clone', 'https://github.com/bhouston/gitx.git']);
 ```
 
-See the [core API guide](https://github.com/bhouston/gix/tree/main/packages/core). After installing globally, the [agent setup guide](https://gitx.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `gitx` explicitly.
+See the [core API guide](https://github.com/bhouston/gitx/tree/main/packages/core). After installing globally, the [agent setup guide](https://gitx.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `gitx` explicitly.
 
 ## Development
 
@@ -133,15 +133,15 @@ pnpm test:proof
 
 `pnpm check` runs Oxlint, Oxfmt, TypeScript checks, Vitest, workflow tests, npm package checks, and the documentation build. CLI tests use `vitest-command-line`. The proof script creates temporary loopback Git remotes, verifies concurrent clones share object files, deletes the store, and checks that consumers remain valid.
 
-See [development documentation](https://gitx.ben3d.ca/docs/development), the [implementation plan](https://github.com/bhouston/gix/blob/main/docs/PLAN.md), and [release setup](https://github.com/bhouston/gix/blob/main/RELEASING.md).
+See [development documentation](https://gitx.ben3d.ca/docs/development), the [implementation plan](https://github.com/bhouston/gitx/blob/main/docs/PLAN.md), and [release setup](https://github.com/bhouston/gitx/blob/main/RELEASING.md).
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/bhouston/gix/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gix/releases) for release notes.
+See [CONTRIBUTING.md](https://github.com/bhouston/gitx/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gitx/releases) for release notes.
 
 ## License
 
-[MIT](https://github.com/bhouston/gix/blob/main/LICENSE)
+[MIT](https://github.com/bhouston/gitx/blob/main/LICENSE)
 
 ## Author
 

@@ -56,4 +56,4 @@ The workflow requires `main`, reruns CI on the selected commit, and uses semanti
 
 ## Security
 
-Report vulnerabilities privately through [GitHub private vulnerability reporting](https://github.com/bhouston/gix/security/advisories/new), as described in [SECURITY.md](SECURITY.md). Do not disclose exploit details in a public issue.
+Report vulnerabilities privately through [GitHub private vulnerability reporting](https://github.com/bhouston/gitx/security/advisories/new), as described in [SECURITY.md](SECURITY.md). Do not disclose exploit details in a public issue.

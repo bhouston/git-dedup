@@ -2,8 +2,8 @@
 
 [![npm version](https://img.shields.io/npm/v/@bhouston/gitx-core.svg)](https://www.npmjs.com/package/@bhouston/gitx-core)
 [![npm downloads](https://img.shields.io/npm/dm/@bhouston/gitx-core.svg)](https://www.npmjs.com/package/@bhouston/gitx-core)
-[![CI](https://github.com/bhouston/gix/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gix/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gix/blob/main/LICENSE)
+[![CI](https://github.com/bhouston/gitx/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gitx/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gitx/blob/main/LICENSE)
 [![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
@@ -13,7 +13,7 @@ Build Node.js tools that reuse local Git mirrors across independent checkouts. T
 
 Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules, reducing repeated downloads and duplicate object storage as agents spin up new workspaces. gitx manages mirror creation, updates, and reuse for you, removing the bookkeeping of maintaining mirrors and passing reference paths to each clone.
 
-**[Documentation](https://gitx.ben3d.ca/) · [Source](https://github.com/bhouston/gix) · [CLI package](https://www.npmjs.com/package/@bhouston/gitx)**
+**[Documentation](https://gitx.ben3d.ca/) · [Source](https://github.com/bhouston/gitx) · [CLI package](https://www.npmjs.com/package/@bhouston/gitx)**
 
 ## Installation
 
@@ -29,7 +29,7 @@ npm install @bhouston/gitx-core
 import { createGitx } from '@bhouston/gitx-core';
 
 const gitx = createGitx({ cwd: process.cwd() });
-const exitCode = await gitx.run(['clone', 'https://github.com/bhouston/gix.git', 'gix-checkout']);
+const exitCode = await gitx.run(['clone', 'https://github.com/bhouston/gitx.git', 'gitx-checkout']);
 process.exitCode = exitCode;
 ```
 
@@ -66,7 +66,7 @@ The returned methods are asynchronous:
 import { createGitx } from '@bhouston/gitx-core';
 
 const gitx = createGitx({ cwd: process.cwd() });
-const { cached, skipped } = await gitx.cache('./gix-checkout');
+const { cached, skipped } = await gitx.cache('./gitx-checkout');
 console.log({ cached, skipped });
 console.log(await gitx.storeInfo());
 ```
@@ -92,7 +92,7 @@ const gitx = createGitx({
   },
 });
 
-await gitx.cache('./gix-checkout');
+await gitx.cache('./gitx-checkout');
 ```
 
 The callback enables metadata scans after optimized clones and cache adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for cache adoption. The package exports `GitxOptions`, `StorageReport`, `StoreInfo`, `CacheResult`, `DoctorCheck`, and `DoctorResult` types.
@@ -115,11 +115,11 @@ Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety gu
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/bhouston/gix/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gix/releases) for release notes.
+See [CONTRIBUTING.md](https://github.com/bhouston/gitx/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gitx/releases) for release notes.
 
 ## License
 
-[MIT](https://github.com/bhouston/gix/blob/main/LICENSE)
+[MIT](https://github.com/bhouston/gitx/blob/main/LICENSE)
 
 ## Author
 
