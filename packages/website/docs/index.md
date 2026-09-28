@@ -8,6 +8,8 @@ gitx is a Node.js wrapper around Git. It keeps a local mirror for a remote so re
 
 gitx requires Node.js 22 or newer, Git, and macOS or Linux. This project is in active development; see the [roadmap](./roadmap.md) for the current scope.
 
+Read [Why gitx?](./why-gitx.md) for a comparison with Chromium depot_tools and manual mirror/reference workflows, including why optimized consumers survive store deletion.
+
 ## From this repository
 
 ```sh

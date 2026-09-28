@@ -2,6 +2,8 @@
 title: How it works
 ---
 
+For the design tradeoffs against depot_tools and manual Git caching, see [Why gitx?](./why-gitx.md).
+
 ## The object flow
 
 ```text
