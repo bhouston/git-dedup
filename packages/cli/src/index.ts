@@ -3,10 +3,6 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createGitx } from '@bhouston/gitx-core';
 import type { StorageReport } from '@bhouston/gitx-core';
-import { handleOpenCliRequest } from '@clidoc/core';
-import yargs from 'yargs';
-import { documentFromCommands, loadCommands } from './document.js';
-import { printStorageReports } from './stats.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageInfo = JSON.parse(readFileSync(join(here, '../package.json'), 'utf8')) as {
@@ -24,6 +20,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     if (!stats) return createGitx().run(args);
     const reports: StorageReport[] = [];
     const code = await createGitx({ onStorageReport: (report) => reports.push(report) }).run(forwardedArgs);
+    const { printStorageReports } = await import('./stats.js');
     printStorageReports(reports);
     return code;
   };
@@ -38,6 +35,18 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   ) {
     return runGit();
   }
+  // Editors such as VS Code parse this as Git's version, so lead with Git's line.
+  if (args.length === 1 && (first === '--version' || first === '-v')) {
+    console.log(`${await createGitx().gitVersion()} (gitx ${packageInfo.version})`);
+    return 0;
+  }
+
+  // Loaded lazily: these dominate startup and forwarded Git commands never need them.
+  const [{ handleOpenCliRequest }, { default: yargs }, { documentFromCommands, loadCommands }] = await Promise.all([
+    import('@clidoc/core'),
+    import('yargs'),
+    import('./document.js'),
+  ]);
 
   const parser = yargs(args)
     .scriptName('gitx')

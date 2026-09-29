@@ -327,6 +327,10 @@ it('resolves relative submodule URLs against the parent remote', async () => {
   const module = join(root, 'parent', 'deps/project');
   expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
   await expectLinkedPack(store, remote, git(['rev-parse', '--absolute-git-dir'], module));
+  // VS Code's Git: Clone argument order and --recursive alias.
+  expect(await api.run(['clone', parentUrl, join(root, 'parent-vscode'), '--progress', '--recursive'])).toBe(0);
+  const vscodeModule = join(root, 'parent-vscode', 'deps/project');
+  await expectLinkedPack(store, remote, git(['rev-parse', '--absolute-git-dir'], vscodeModule));
   expect((await api.cache(join(root, 'parent'))).cached).toBe(2);
   await rm(store, { recursive: true, force: true });
   git(['fsck', '--full'], join(root, 'parent'));

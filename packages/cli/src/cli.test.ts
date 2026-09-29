@@ -105,7 +105,8 @@ describe('gitx CLI', () => {
 
     const version = await cli.run(['--version']);
     expect(version).toSucceed();
-    expect(version).toHaveStdout(/0\.1\.0/);
+    // Editors that use gitx as git.path read the leading Git version.
+    expect(version).toHaveStdout(/^git version \d+\.\d+\S* .*\(gitx 0\.1\.0\)\n?$/);
   });
 
   it('supports OpenCLI discovery', async () => {

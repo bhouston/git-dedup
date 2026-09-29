@@ -57,6 +57,7 @@ The returned methods are asynchronous:
 | `fetch()`      | `{ fetched }`; fetches and repacks mirrors                                                      |
 | `gc(unused?)`  | `{ removed }`; removes old mirrors, default `30d`; accepts ages such as `12h` or `60m`          |
 | `doctor()`     | `{ checks }`; each check has `name`, `ok`, and `detail`                                         |
+| `gitVersion()` | Underlying Git version line, such as `git version 2.50.1`                                       |
 
 ### Consolidate an existing repository
 

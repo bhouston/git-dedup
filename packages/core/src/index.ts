@@ -160,7 +160,8 @@ function parseClone(
       forwarded.push(arg);
       continue;
     }
-    if (arg === '--recurse-submodules') {
+    // VS Code's Git: Clone passes --recursive, Git's alias for --recurse-submodules.
+    if (arg === '--recurse-submodules' || arg === '--recursive') {
       recurse = true;
       continue;
     }
@@ -946,6 +947,8 @@ export function createGitx(options: GitxOptions = {}) {
     const parsed = parseGlobal(args, cwd);
     if (env.GITX_DISABLE === '1' || incomingEnv.GITX_ACTIVE === '1' || hasRepositoryEnvironment || !parsed)
       return (await git(args, cwd, true)).code;
+    // Plain forwarding skips the config lookup so gitx stays cheap as an editor's git.path.
+    if (!['clone', 'submodule', 'worktree'].includes(parsed.command)) return (await git(args, cwd, true)).code;
     const enabled = await git(['config', '--type=bool', '--get', 'gitx.enabled'], parsed.cwd);
     if (enabled.stdout.trim() === 'false') return (await git(args, cwd, true)).code;
     // -C is resolved explicitly. Other global options can change Git semantics, so forward intact.
@@ -970,7 +973,14 @@ export function createGitx(options: GitxOptions = {}) {
     return (await git(args, cwd, true)).code;
   }
 
-  return { run, cache, storeInfo, fetch, gc, doctor, storePath };
+  /** The underlying Git version line, such as `git version 2.50.1`. */
+  async function gitVersion(): Promise<string> {
+    const result = await git(['--version']);
+    if (result.code !== 0) throw new Error(`git --version failed: ${result.stderr.trim()}`);
+    return result.stdout.trim();
+  }
+
+  return { run, cache, storeInfo, fetch, gc, doctor, storePath, gitVersion };
 }
 
 function processExists(pid: number): boolean {
