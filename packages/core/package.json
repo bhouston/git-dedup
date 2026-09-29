@@ -2,6 +2,7 @@
   "name": "@bhouston/gitx-core",
   "version": "0.1.0",
   "description": "Consolidated Git storage with independent checkouts",
+  "homepage": "https://gitx.ben3d.ca",
   "license": "MIT",
   "repository": {
     "type": "git",

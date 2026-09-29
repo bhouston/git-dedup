@@ -2,6 +2,7 @@
   "name": "@bhouston/gitx",
   "version": "0.1.0",
   "description": "A Git wrapper that shares repository object storage",
+  "homepage": "https://gitx.ben3d.ca",
   "license": "MIT",
   "repository": {
     "type": "git",
