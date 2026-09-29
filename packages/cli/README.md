@@ -114,12 +114,11 @@ Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety gu
 
 ## Command documentation and agents
 
-Run `gitx --help` or a store command's `--help` flag for options. The CLI supports [clidoc](https://github.com/bhouston/clidoc) and OpenCLI output:
+Run `gitx --help` or a store command's `--help` flag for options. `gitx docgen` writes [clidoc](https://github.com/bhouston/clidoc) documentation:
 
 ```sh
 gitx docgen --format json --output gitx.json
 gitx docgen --format markdown --output gitx-commands.md
-gitx __opencli
 ```
 
 The [agent setup guide](https://gitx.ben3d.ca/docs/agents) has copyable instructions for `AGENTS.md` and `CLAUDE.md` after a global installation.

@@ -9,7 +9,7 @@ const packageInfo = JSON.parse(readFileSync(join(here, '../package.json'), 'utf8
   version: string;
   description: string;
 };
-const ownCommands = new Set(['cache', 'store', 'doctor', 'docgen', '__opencli']);
+const ownCommands = new Set(['cache', 'store', 'doctor', 'docgen']);
 
 /** Run the gitx CLI. All Git commands retain their original argument array. */
 export async function main(args = process.argv.slice(2)): Promise<number> {
@@ -30,8 +30,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     first !== '--help' &&
     first !== '-h' &&
     first !== '--version' &&
-    first !== '-v' &&
-    first !== '--opencli'
+    first !== '-v'
   ) {
     return runGit();
   }
@@ -42,11 +41,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   }
 
   // Loaded lazily: these dominate startup and forwarded Git commands never need them.
-  const [{ handleOpenCliRequest }, { default: yargs }, { documentFromCommands, loadCommands }] = await Promise.all([
-    import('@clidoc/core'),
-    import('yargs'),
-    import('./document.js'),
-  ]);
+  const [{ default: yargs }, { loadCommands }] = await Promise.all([import('yargs'), import('./document.js')]);
 
   const parser = yargs(args)
     .scriptName('gitx')
@@ -60,13 +55,6 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     .showHelpOnFail(true);
   const commands = await loadCommands();
   parser.command(commands);
-  const document = documentFromCommands(commands);
-
-  if (first === '--opencli') {
-    await handleOpenCliRequest(['__opencli', ...forwardedArgs.slice(1)], () => document);
-    return 0;
-  }
-  if (await handleOpenCliRequest(forwardedArgs, () => document)) return 0;
   if (args.length === 0) {
     parser.showHelp();
     return 0;

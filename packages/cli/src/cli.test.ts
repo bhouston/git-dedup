@@ -109,8 +109,8 @@ describe('gitx CLI', () => {
     expect(version).toHaveStdout(/^git version \d+\.\d+\S* .*\(gitx 0\.1\.0\)\n?$/);
   });
 
-  it('supports OpenCLI discovery', async () => {
-    const result = await cli.run(['--stats', '__opencli']);
+  it('generates the OpenCLI document', async () => {
+    const result = await cli.run(['docgen']);
     expect(result).toSucceed();
     const doc = result.json<{
       info: { title: string };

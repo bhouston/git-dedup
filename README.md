@@ -114,7 +114,7 @@ Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety gu
 
 | Package                                                                  | Purpose                                                         |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| [@bhouston/gitx](https://www.npmjs.com/package/@bhouston/gitx)           | CLI interface, Git forwarding, and clidoc/OpenCLI support       |
+| [@bhouston/gitx](https://www.npmjs.com/package/@bhouston/gitx)           | CLI interface, Git forwarding, and `gitx docgen` documentation  |
 | [@bhouston/gitx-core](https://www.npmjs.com/package/@bhouston/gitx-core) | Git operations, mirrors, and storage API                        |
 | [Website](https://github.com/bhouston/gitx/tree/main/packages/website)   | Docusaurus documentation and project site; not published to npm |
 
