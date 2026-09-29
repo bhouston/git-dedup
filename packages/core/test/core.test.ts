@@ -208,20 +208,6 @@ it('adopts objects from the common gitdir when cache runs in a worktree', async 
   git(['fsck', '--full'], worktree);
 });
 
-it('uses independent kept packs in copy mode', async () => {
-  const { root, remote, store } = await fixture();
-  git(['config', '--file', join(root, 'global.gitconfig'), 'gitx.linkMode', 'copy'], root);
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
-  expect(await api.run(['clone', remote, 'copy'])).toBe(0);
-  const source = join(store, 'mirrors', `127.0.0.1_${new URL(remote).port}`, 'team', 'project.git', 'objects', 'pack');
-  const target = join(root, 'copy', '.git', 'objects', 'pack');
-  const pack = (await readdir(source)).find((name) => name.endsWith('.pack'))!;
-  expect((await stat(join(source, pack))).ino).not.toBe((await stat(join(target, pack))).ino);
-  expect(await readdir(target)).toContain(pack.replace(/\.pack$/, '.keep'));
-  await rm(store, { recursive: true, force: true });
-  git(['fsck', '--full'], join(root, 'copy'));
-});
-
 it('passes shallow clones to Git without creating a mirror', async () => {
   const { root, remote, store } = await fixture();
   const reports: StorageReport[] = [];

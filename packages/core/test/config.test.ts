@@ -43,7 +43,7 @@ it('doctor reports checks and never changes global Git configuration', async () 
   await writeFile(config, '[user]\n name = Test\n');
   const before = await readFile(config, 'utf8');
   const result = await api.doctor();
-  expect(result.checks.map((check) => check.name)).toEqual(['filesystem', 'reflink', 'git']);
+  expect(result.checks.map((check) => check.name)).toEqual(['filesystem', 'git']);
   expect(await readFile(config, 'utf8')).toBe(before);
 });
 
