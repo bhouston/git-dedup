@@ -2,6 +2,18 @@
   "name": "@bhouston/gitx",
   "version": "0.1.0",
   "description": "A Git wrapper that shares repository object storage",
+  "keywords": [
+    "cache",
+    "cli",
+    "clone",
+    "coding-agents",
+    "git",
+    "git-wrapper",
+    "mirror",
+    "submodule",
+    "vscode",
+    "worktree"
+  ],
   "homepage": "https://gitx.ben3d.ca",
   "license": "MIT",
   "repository": {

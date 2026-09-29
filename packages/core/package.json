@@ -2,6 +2,17 @@
   "name": "@bhouston/gitx-core",
   "version": "0.1.0",
   "description": "Consolidated Git storage with independent checkouts",
+  "keywords": [
+    "cache",
+    "clone",
+    "deduplication",
+    "git",
+    "hardlink",
+    "mirror",
+    "storage",
+    "submodule",
+    "worktree"
+  ],
   "homepage": "https://gitx.ben3d.ca",
   "license": "MIT",
   "repository": {
