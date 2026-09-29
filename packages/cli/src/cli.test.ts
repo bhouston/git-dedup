@@ -25,7 +25,6 @@ function isolatedEnv(dir: string): NodeJS.ProcessEnv {
     GIT_CONFIG_GLOBAL: join(dir, 'global.gitconfig'),
     GIT_CONFIG_SYSTEM: join(dir, 'system.gitconfig'),
     GITX_STORE: join(dir, 'store'),
-    GITX_DISABLE: '0',
   };
 }
 
@@ -105,11 +104,12 @@ describe('gitx CLI', () => {
 
     const version = await cli.run(['--version']);
     expect(version).toSucceed();
-    expect(version).toHaveStdout(/0\.1\.0/);
+    // Editors that use gitx as git.path read the leading Git version.
+    expect(version).toHaveStdout(/^git version \d+\.\d+\S* .*\(gitx 0\.1\.0\)\n?$/);
   });
 
-  it('supports OpenCLI discovery', async () => {
-    const result = await cli.run(['--stats', '__opencli']);
+  it('generates the OpenCLI document', async () => {
+    const result = await cli.run(['docgen']);
     expect(result).toSucceed();
     const doc = result.json<{
       info: { title: string };
@@ -181,18 +181,6 @@ describe('gitx CLI', () => {
     expect(wrapped).toFail();
     expect(wrapped.exitCode).toBe(native.exitCode);
     expect(wrapped.stderr).toBe(native.stderr);
-  });
-
-  it('bypasses the store when disabled', async () => {
-    const dir = await fixture();
-    const env = { ...isolatedEnv(dir), GITX_DISABLE: '1' };
-    const result = await cli.run(['clone', 'https://127.0.0.1:1/example/repo.git', join(dir, 'checkout')], {
-      env,
-      timeout: 5_000,
-    });
-    expect(result).toFail();
-    expect(result.exitCode).toBe(128);
-    await expect(access(env.GITX_STORE!)).rejects.toThrow();
   });
 
   it('reports clone and cache storage estimates only when requested', async () => {

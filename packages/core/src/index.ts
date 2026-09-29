@@ -160,7 +160,8 @@ function parseClone(
       forwarded.push(arg);
       continue;
     }
-    if (arg === '--recurse-submodules') {
+    // VS Code's Git: Clone passes --recursive, Git's alias for --recurse-submodules.
+    if (arg === '--recurse-submodules' || arg === '--recursive') {
       recurse = true;
       continue;
     }
@@ -290,18 +291,14 @@ async function initializeStore(root: string): Promise<void> {
   await writeFile(marker, 'gitx-store-v1\n', { flag: 'wx' });
 }
 
-async function markLinkedPacks(
-  mirror: string,
-  consumerGitdir: string,
-  mode: 'auto' | 'hardlink' | 'copy' | 'reflink' = 'auto',
-): Promise<void> {
+async function markLinkedPacks(mirror: string, consumerGitdir: string): Promise<void> {
   const source = join(mirror, 'objects', 'pack');
   const target = join(consumerGitdir, 'objects', 'pack');
   for (const name of await readdir(target).catch(() => [])) {
     if (!name.endsWith('.pack')) continue;
     const a = await stat(join(source, name)).catch(() => undefined);
     const b = await stat(join(target, name)).catch(() => undefined);
-    if (a && b && (mode === 'copy' || mode === 'reflink' || (a.dev === b.dev && a.ino === b.ino)))
+    if (a && b && a.dev === b.dev && a.ino === b.ino)
       await writeFile(join(target, name.replace(/\.pack$/, '.keep')), 'gitx base pack\n');
   }
 }
@@ -335,23 +332,6 @@ async function uniquePackBytes(gitdir: string): Promise<number> {
     if (file?.nlink === 1) bytes += file.size;
   }
   return bytes;
-}
-
-async function reflinkPacks(mirror: string, consumerGitdir: string): Promise<void> {
-  const source = join(mirror, 'objects', 'pack');
-  const target = join(consumerGitdir, 'objects', 'pack');
-  for (const name of await readdir(source).catch(() => [])) {
-    if (!/\.(pack|idx|rev)$/.test(name) || !(await isPresent(join(target, name)))) continue;
-    const temp = join(target, `${name}.gitx-${process.pid}`);
-    try {
-      await copyFile(join(source, name), temp, constants.COPYFILE_FICLONE_FORCE).catch(() =>
-        copyFile(join(source, name), temp),
-      );
-      await rename(temp, join(target, name));
-    } finally {
-      await rm(temp, { force: true });
-    }
-  }
 }
 
 async function withLock<T>(root: string, key: string, action: () => Promise<T>): Promise<T> {
@@ -458,19 +438,8 @@ export function createGitx(options: GitxOptions = {}) {
     return result.stdout.trim();
   }
 
-  async function config(name: string): Promise<string | undefined> {
-    const result = await git(['config', '--get', name]);
-    return result.code === 0 ? result.stdout.trim() : undefined;
-  }
-
   async function storePath(): Promise<string> {
     return canonicalPath(resolve(cwd, expandHome(env.GITX_STORE || '~/.cache/gitx')));
-  }
-
-  async function linkMode(): Promise<'auto' | 'hardlink' | 'copy' | 'reflink'> {
-    const value = (await config('gitx.linkMode')) || 'auto';
-    if (!['auto', 'hardlink', 'copy', 'reflink'].includes(value)) throw new Error(`Invalid gitx.linkMode: ${value}`);
-    return value as 'auto' | 'hardlink' | 'copy' | 'reflink';
   }
 
   async function ensureMirror(remote: string, key: string, root: string): Promise<string> {
@@ -569,22 +538,15 @@ export function createGitx(options: GitxOptions = {}) {
         process.stderr.write('gitx: mirror unavailable; using Git clone\n');
         return undefined;
       }
-      const mode = await linkMode();
-      const cloneArgs = [
-        'clone',
-        ...parsed.forwarded,
-        ...(mode === 'copy' || mode === 'reflink' ? ['--no-hardlinks'] : []),
-        mirror,
-        destination,
-      ];
+      // Git hardlinks packs from a local mirror on the same filesystem and copies otherwise.
+      const cloneArgs = ['clone', ...parsed.forwarded, mirror, destination];
       const result = await git(cloneArgs, effectiveCwd, true);
       if (result.code !== 0) return result.code;
       try {
         await checked(['remote', 'set-url', 'origin', parsed.remote], destination);
         await checked(['fetch', 'origin'], destination);
         const gitdir = await repoGitdir(destination);
-        if (mode === 'reflink') await reflinkPacks(mirror, gitdir);
-        await markLinkedPacks(mirror, gitdir, mode);
+        await markLinkedPacks(mirror, gitdir);
         if (options.onStorageReport) {
           const bytes = await packReport(mirror, gitdir);
           emitStorageReport({
@@ -637,20 +599,12 @@ export function createGitx(options: GitxOptions = {}) {
       const root = await storePath();
       await withLock(root, key, async () => {
         const mirror = await ensureMirror(remote, key, root);
-        const mode = await linkMode();
         await mkdir(dirname(gitdir), { recursive: true });
-        await checked([
-          'clone',
-          '--bare',
-          ...(mode === 'copy' || mode === 'reflink' ? ['--no-hardlinks'] : []),
-          mirror,
-          gitdir,
-        ]);
+        await checked(['clone', '--bare', mirror, gitdir]);
         await checked(['-C', gitdir, 'remote', 'set-url', 'origin', remote]);
         await checked(['--git-dir', gitdir, 'config', 'core.bare', 'false']);
         await checked(['--git-dir', gitdir, 'config', 'core.worktree', target]);
-        if (mode === 'reflink') await reflinkPacks(mirror, gitdir);
-        await markLinkedPacks(mirror, gitdir, mode);
+        await markLinkedPacks(mirror, gitdir);
       });
     }
   }
@@ -755,7 +709,6 @@ export function createGitx(options: GitxOptions = {}) {
         await writeFile(join(mirror, '.gitx-last-used'), '');
         const source = join(mirror, 'objects', 'pack');
         const target = join(commonGitdir, 'objects', 'pack');
-        const mode = await linkMode();
         await mkdir(target, { recursive: true });
         for (const name of await readdir(source).catch(() => [])) {
           if (!/\.(pack|idx|rev)$/.test(name)) continue;
@@ -763,17 +716,14 @@ export function createGitx(options: GitxOptions = {}) {
           const to = join(target, name);
           const temp = `${to}.gitx-${process.pid}-${Date.now()}`;
           try {
-            if (mode === 'copy') await copyFile(from, temp);
-            else if (mode === 'reflink')
-              await copyFile(from, temp, constants.COPYFILE_FICLONE_FORCE).catch(() => copyFile(from, temp));
-            else await link(from, temp).catch(() => copyFile(from, temp));
+            await link(from, temp).catch(() => copyFile(from, temp));
             await rename(temp, to);
           } finally {
             await rm(temp, { force: true });
           }
         }
         // Copying rather than linking is still safe; link where the filesystem permits.
-        await markLinkedPacks(mirror, commonGitdir, mode);
+        await markLinkedPacks(mirror, commonGitdir);
         await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '--no-pack-kept-objects'], repo);
         const localLfs = join(commonGitdir, 'lfs', 'objects');
         if (await isPresent(localLfs)) await copyTree(localLfs, join(root, 'lfs', 'objects'));
@@ -873,20 +823,6 @@ export function createGitx(options: GitxOptions = {}) {
             ? 'Store and working directory share a filesystem'
             : 'Store and working directory use different filesystems',
       });
-      const testA = join(root, `reflink-${process.pid}-${Date.now()}`);
-      const testB = `${testA}-copy`;
-      let reflink = false;
-      try {
-        await writeFile(testA, 'gitx');
-        await copyFile(testA, testB, constants.COPYFILE_FICLONE_FORCE);
-        reflink = true;
-      } catch {
-        /* unsupported */
-      } finally {
-        await rm(testA, { force: true });
-        await rm(testB, { force: true });
-      }
-      checks.push({ name: 'reflink', ok: reflink, detail: reflink ? 'Supported' : 'Unavailable' });
       const binary = await gitPath();
       checks.push({ name: 'git', ok: true, detail: `${binary}: ${await checked(['--version'])}` });
       return { checks };
@@ -944,10 +880,8 @@ export function createGitx(options: GitxOptions = {}) {
 
   async function run(args: string[]): Promise<number> {
     const parsed = parseGlobal(args, cwd);
-    if (env.GITX_DISABLE === '1' || incomingEnv.GITX_ACTIVE === '1' || hasRepositoryEnvironment || !parsed)
+    if (incomingEnv.GITX_ACTIVE === '1' || hasRepositoryEnvironment || !parsed)
       return (await git(args, cwd, true)).code;
-    const enabled = await git(['config', '--type=bool', '--get', 'gitx.enabled'], parsed.cwd);
-    if (enabled.stdout.trim() === 'false') return (await git(args, cwd, true)).code;
     // -C is resolved explicitly. Other global options can change Git semantics, so forward intact.
     for (let i = 0; i < parsed.prefix.length; i++) {
       const arg = parsed.prefix[i]!;
@@ -970,7 +904,14 @@ export function createGitx(options: GitxOptions = {}) {
     return (await git(args, cwd, true)).code;
   }
 
-  return { run, cache, storeInfo, fetch, gc, doctor, storePath };
+  /** The underlying Git version line, such as `git version 2.50.1`. */
+  async function gitVersion(): Promise<string> {
+    const result = await git(['--version']);
+    if (result.code !== 0) throw new Error(`git --version failed: ${result.stderr.trim()}`);
+    return result.stdout.trim();
+  }
+
+  return { run, cache, storeInfo, fetch, gc, doctor, storePath, gitVersion };
 }
 
 function processExists(pid: number): boolean {

@@ -57,6 +57,7 @@ The returned methods are asynchronous:
 | `fetch()`      | `{ fetched }`; fetches and repacks mirrors                                                      |
 | `gc(unused?)`  | `{ removed }`; removes old mirrors, default `30d`; accepts ages such as `12h` or `60m`          |
 | `doctor()`     | `{ checks }`; each check has `name`, `ok`, and `detail`                                         |
+| `gitVersion()` | Underlying Git version line, such as `git version 2.50.1`                                       |
 
 ### Consolidate an existing repository
 
@@ -95,19 +96,15 @@ await gitx.cache('./gitx-checkout');
 
 The callback enables metadata scans after optimized clones and cache adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for cache adoption. The package exports `GitxOptions`, `StorageReport`, `StoreInfo`, `CacheResult`, `DoctorCheck`, and `DoctorResult` types.
 
-Clone estimates count duplicate pack bytes avoided; cache estimates count the reduction in private pack bytes. Counts cover `.pack`, `.idx`, and `.rev` files, excluding loose objects and LFS. They measure logical file sizes, not physical disk blocks reclaimed. Reflinks may save physical space while appearing as copied bytes, and creating a mirror on first use may yield no net savings yet.
+Clone estimates count duplicate pack bytes avoided; cache estimates count the reduction in private pack bytes. Counts cover `.pack`, `.idx`, and `.rev` files, excluding loose objects and LFS. They measure logical file sizes, not physical disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet.
 
 ## Configuration
 
-The store defaults to `~/.cache/gitx`; `GITX_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `gitx.enabled`, `gitx.gitPath`, and `gitx.linkMode` (`auto`, `hardlink`, `reflink`, or `copy`). `GITX_DISABLE=1` bypasses optimization. gitx does not change global Git configuration.
+The store defaults to `~/.cache/gitx`; `GITX_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `gitx.gitPath`. gitx hardlinks object files when the store and checkout share a filesystem and copies them otherwise. gitx does not change global Git configuration.
 
 ## Storage safety
 
-Each consumer has its own Git object directory and uses no Git alternates. Hard links let multiple filenames refer to the same stored bytes: deleting the mirror removes its links while the consumer's links remain valid. Existing Git repositories remain usable after the store is deleted. Worktrees retain Git's normal dependency on their common repository.
-
-Keep the store on the same filesystem as your working copies to enable hard links. Cross-filesystem copies and later Git maintenance can reduce sharing. The first clone creates a mirror, so savings generally come from reusing it across consumers.
-
-To remove the store, delete its directory when no gitx operations are running. Cache adoption retains existing local Git LFS objects. gitx does not configure `lfs.storage`.
+gitx is safe by default. Every checkout keeps its own complete set of Git objects and uses no Git alternates, so deleting the store never breaks a repository. Keep the store on the same filesystem as your checkouts so objects are hardlinked rather than copied.
 
 Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
 

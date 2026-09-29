@@ -24,7 +24,7 @@ The first clone populates the local mirror. Later clones of the same remote can 
 
 See [Safety](./safety.md) for storage guarantees and cleanup guidance.
 
-The optional [`--stats` report](/docs/cli) scans local `.pack`, `.idx`, and `.rev` files and their filesystem metadata after a supported clone or cache adoption. It estimates shared logical bytes from matching device and inode IDs and the change in consumer-private packed file bytes during adoption. It excludes loose objects and Git LFS, and does not traverse Git objects or measure allocated disk blocks. Copy and reflink modes can have different physical savings from this estimate.
+The optional [`--stats` report](/docs/cli) scans local `.pack`, `.idx`, and `.rev` files and their filesystem metadata after a supported clone or cache adoption. It estimates shared logical bytes from matching device and inode IDs and the change in consumer-private packed file bytes during adoption. It excludes loose objects and Git LFS, and does not traverse Git objects or measure allocated disk blocks.
 
 The store defaults to `~/.cache/gitx`. Set `GITX_STORE` to use another location. gitx does not change global Git configuration.
 

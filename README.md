@@ -80,7 +80,7 @@ Unsupported clone forms, including local paths, shallow or partial clones, and S
 
 Reports go to stderr and show whether a mirror was reused or created, bytes shared through hard links, and bytes copied. Clone savings estimate duplicate pack bytes avoided; cache savings compare private pack bytes before and after adoption.
 
-Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects and Git LFS. These are logical file-size estimates, not measured disk blocks reclaimed; reflinks can share physical storage without matching inode IDs. Creating a mirror on first use may yield no net savings yet. Plain Git fallback does not print a report.
+Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects and Git LFS. These are logical file-size estimates, not measured disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet. Plain Git fallback does not print a report.
 
 ## Configuration
 
@@ -92,21 +92,14 @@ export GITX_STORE="$HOME/my-gitx-store"
 
 Changing `GITX_STORE` selects a different store; it does not move the existing one. gitx does not change global Git configuration.
 
-| Setting              | Purpose                                                                   |
-| -------------------- | ------------------------------------------------------------------------- |
-| `GITX_STORE`         | Override the store path for an invocation                                 |
-| `GITX_DISABLE=1`     | Forward to Git without optimization                                       |
-| `gitx.enabled=false` | Disable optimization persistently                                         |
-| `gitx.gitPath`       | Select the Git executable                                                 |
-| `gitx.linkMode`      | Choose `auto`, `hardlink`, `reflink`, or `copy` for eligible object files |
+| Setting        | Purpose                                   |
+| -------------- | ----------------------------------------- |
+| `GITX_STORE`   | Override the store path for an invocation |
+| `gitx.gitPath` | Select the Git executable                 |
 
-## How storage stays independent
+## Storage safety
 
-Each consumer has its own Git object directory and uses no Git alternates. Hard links let multiple filenames refer to the same stored bytes: deleting the mirror removes its links while the consumer's links remain valid. Existing Git repositories remain usable after the store is deleted. Worktrees retain Git's normal dependency on their common repository.
-
-Keep the store on the same filesystem as your working copies to enable hard links. Cross-filesystem copies and later Git maintenance can reduce sharing. The first clone creates a mirror, so savings generally come from reusing it across consumers.
-
-To remove the store, delete its directory when no gitx operations are running. Cache adoption retains existing local Git LFS objects. gitx does not configure `lfs.storage`.
+gitx is safe by default. Every checkout keeps its own complete set of Git objects and uses no Git alternates, so deleting the store never breaks a repository. Keep the store on the same filesystem as your checkouts so objects are hardlinked rather than copied.
 
 Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
 
@@ -114,7 +107,7 @@ Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety gu
 
 | Package                                                                  | Purpose                                                         |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| [@bhouston/gitx](https://www.npmjs.com/package/@bhouston/gitx)           | CLI interface, Git forwarding, and clidoc/OpenCLI support       |
+| [@bhouston/gitx](https://www.npmjs.com/package/@bhouston/gitx)           | CLI interface, Git forwarding, and `gitx docgen` documentation  |
 | [@bhouston/gitx-core](https://www.npmjs.com/package/@bhouston/gitx-core) | Git operations, mirrors, and storage API                        |
 | [Website](https://github.com/bhouston/gitx/tree/main/packages/website)   | Docusaurus documentation and project site; not published to npm |
 
