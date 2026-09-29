@@ -25,7 +25,6 @@ function isolatedEnv(dir: string): NodeJS.ProcessEnv {
     GIT_CONFIG_GLOBAL: join(dir, 'global.gitconfig'),
     GIT_CONFIG_SYSTEM: join(dir, 'system.gitconfig'),
     GITX_STORE: join(dir, 'store'),
-    GITX_DISABLE: '0',
   };
 }
 
@@ -182,18 +181,6 @@ describe('gitx CLI', () => {
     expect(wrapped).toFail();
     expect(wrapped.exitCode).toBe(native.exitCode);
     expect(wrapped.stderr).toBe(native.stderr);
-  });
-
-  it('bypasses the store when disabled', async () => {
-    const dir = await fixture();
-    const env = { ...isolatedEnv(dir), GITX_DISABLE: '1' };
-    const result = await cli.run(['clone', 'https://127.0.0.1:1/example/repo.git', join(dir, 'checkout')], {
-      env,
-      timeout: 5_000,
-    });
-    expect(result).toFail();
-    expect(result.exitCode).toBe(128);
-    await expect(access(env.GITX_STORE!)).rejects.toThrow();
   });
 
   it('reports clone and cache storage estimates only when requested', async () => {

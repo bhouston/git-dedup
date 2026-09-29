@@ -100,7 +100,7 @@ Clone estimates count duplicate pack bytes avoided; cache estimates count the re
 
 ## Configuration
 
-The store defaults to `~/.cache/gitx`; `GITX_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `gitx.enabled`, `gitx.gitPath`, and `gitx.linkMode` (`auto`, `hardlink`, `reflink`, or `copy`). `GITX_DISABLE=1` bypasses optimization. gitx does not change global Git configuration.
+The store defaults to `~/.cache/gitx`; `GITX_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `gitx.gitPath` and `gitx.linkMode` (`auto`, `hardlink`, `reflink`, or `copy`). gitx does not change global Git configuration.
 
 ## Storage safety
 

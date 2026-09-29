@@ -14,7 +14,6 @@ it('intercepts worktree add and initializes independent mirror-backed submodules
     GIT_CONFIG_NOSYSTEM: '1',
     GITX_STORE: join(root, 'store'),
     GITX_ACTIVE: undefined,
-    GITX_DISABLE: undefined,
   };
   const git = (at: string, ...args: string[]) =>
     execFileSync('git', args, { cwd: at, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();

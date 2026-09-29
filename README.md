@@ -92,13 +92,11 @@ export GITX_STORE="$HOME/my-gitx-store"
 
 Changing `GITX_STORE` selects a different store; it does not move the existing one. gitx does not change global Git configuration.
 
-| Setting              | Purpose                                                                   |
-| -------------------- | ------------------------------------------------------------------------- |
-| `GITX_STORE`         | Override the store path for an invocation                                 |
-| `GITX_DISABLE=1`     | Forward to Git without optimization                                       |
-| `gitx.enabled=false` | Disable optimization persistently                                         |
-| `gitx.gitPath`       | Select the Git executable                                                 |
-| `gitx.linkMode`      | Choose `auto`, `hardlink`, `reflink`, or `copy` for eligible object files |
+| Setting         | Purpose                                                                   |
+| --------------- | ------------------------------------------------------------------------- |
+| `GITX_STORE`    | Override the store path for an invocation                                 |
+| `gitx.gitPath`  | Select the Git executable                                                 |
+| `gitx.linkMode` | Choose `auto`, `hardlink`, `reflink`, or `copy` for eligible object files |
 
 ## How storage stays independent
 

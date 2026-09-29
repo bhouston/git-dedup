@@ -21,7 +21,6 @@ async function fixture() {
     GIT_CONFIG_NOSYSTEM: '1',
     GITX_STORE: store,
     GITX_ACTIVE: undefined,
-    GITX_DISABLE: undefined,
   };
   return { root, config, store, env, api: createGitx({ cwd: root, env }) };
 }

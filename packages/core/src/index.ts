@@ -945,12 +945,8 @@ export function createGitx(options: GitxOptions = {}) {
 
   async function run(args: string[]): Promise<number> {
     const parsed = parseGlobal(args, cwd);
-    if (env.GITX_DISABLE === '1' || incomingEnv.GITX_ACTIVE === '1' || hasRepositoryEnvironment || !parsed)
+    if (incomingEnv.GITX_ACTIVE === '1' || hasRepositoryEnvironment || !parsed)
       return (await git(args, cwd, true)).code;
-    // Plain forwarding skips the config lookup so gitx stays cheap as an editor's git.path.
-    if (!['clone', 'submodule', 'worktree'].includes(parsed.command)) return (await git(args, cwd, true)).code;
-    const enabled = await git(['config', '--type=bool', '--get', 'gitx.enabled'], parsed.cwd);
-    if (enabled.stdout.trim() === 'false') return (await git(args, cwd, true)).code;
     // -C is resolved explicitly. Other global options can change Git semantics, so forward intact.
     for (let i = 0; i < parsed.prefix.length; i++) {
       const arg = parsed.prefix[i]!;
