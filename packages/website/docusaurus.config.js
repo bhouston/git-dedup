@@ -34,19 +34,6 @@ module.exports = {
     },
     footer: {
       style: 'dark',
-      links: [
-        {
-          title: 'gitx',
-          items: [
-            { label: 'Documentation', to: '/docs' },
-            { label: 'Safety', to: '/docs/safety' },
-          ],
-        },
-        {
-          title: 'Project',
-          items: [{ label: 'Source', href: 'https://github.com/bhouston/gitx' }],
-        },
-      ],
       copyright: `Copyright © ${new Date().getFullYear()} gitx · MIT · Created with love ❤️ by <a href="https://ben3d.ca">Ben Houston</a> · Sponsored by <a href="https://landofassets.com">Land of Assets</a>`,
     },
   },
