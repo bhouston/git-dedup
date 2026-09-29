@@ -15,14 +15,6 @@
   letter-spacing: 0.16em;
   margin-bottom: 1.5rem;
 }
-.dot {
-  display: inline-block;
-  width: 0.55rem;
-  height: 0.55rem;
-  margin-right: 0.55rem;
-  border-radius: 50%;
-  background: #2bb588;
-}
 .hero h1 {
   font-size: clamp(3.5rem, 7vw, 6.8rem);
   line-height: 0.98;

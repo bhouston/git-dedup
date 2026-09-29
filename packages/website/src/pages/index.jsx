@@ -30,9 +30,6 @@ export default function Home() {
       <header className={styles.hero}>
         <div className={styles.heroInner}>
           <div className={styles.copy}>
-            <p className={styles.kicker}>
-              <span className={styles.dot} /> THE GIT STORAGE WRAPPER
-            </p>
             <h1>
               Clone freely.
               <br />
