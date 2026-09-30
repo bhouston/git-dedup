@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
+import { validate } from '@clidoc/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { commandLine, extendMatchers } from 'vitest-command-line';
 
@@ -116,6 +117,7 @@ describe('gitx CLI', () => {
       global: { flags: Array<{ name: string }> };
       commands: Record<string, unknown>;
     }>();
+    expect(validate(doc)).toMatchObject({ valid: true });
     expect(doc.info.title).toBe('gitx');
     expect(doc.global.flags).toContainEqual(expect.objectContaining({ name: 'stats' }));
     expect(doc.commands).toHaveProperty('gitx clone');
