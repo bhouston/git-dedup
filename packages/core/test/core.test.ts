@@ -1,5 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:net';
 import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -179,6 +180,29 @@ it('skips an unchanged store add rerun without adding pins or refreshing the rem
   expect(git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/gitx/consumers'], pool)).toBe(pins);
   expect((await readdir(join(consumer, '.git', 'objects', 'pack'))).toSorted()).toEqual(packNames);
   git(['fsck', '--full'], consumer);
+});
+
+it('keeps remote URL credentials out of the store and redacts old registrations', async () => {
+  const { root, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  // Port 9 refuses connections, so the remote refresh is deferred without prompting.
+  const secretUrl = 'https://user:secret@127.0.0.1:9/team/project.git';
+  git(['remote', 'set-url', 'origin', secretUrl], consumer);
+  const key = keyForRemote(secretUrl)!;
+  const registration = join(store, 'remotes', `${createHash('sha256').update(key).digest('hex')}.json`);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const output = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
+  try {
+    expect((await api.add(consumer)).added).toBe(1);
+    expect(await readFile(registration, 'utf8')).not.toContain('secret');
+    expect(await api.listRemotes()).toEqual([{ key, remote: 'https://127.0.0.1:9/team/project.git' }]);
+    expect(await api.add(consumer)).toMatchObject({ repositories: [{ status: 'skipped', reason: 'already current' }] });
+  } finally {
+    output.mockRestore();
+  }
+  await writeFile(registration, JSON.stringify({ key, remote: secretUrl }) + '\n');
+  expect(await api.listRemotes()).toEqual([{ key, remote: 'https://***@127.0.0.1:9/team/project.git' }]);
 });
 
 it('pins changed local refs once and retains old tips after force updates', async () => {
