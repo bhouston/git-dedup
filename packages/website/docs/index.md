@@ -15,7 +15,7 @@ Requires Node.js 22+ and Git on macOS or Linux.
 ## Clone a repository
 
 ```sh
-# Automatically create or reuse the object pool in ~/.cache/gitx.
+# Automatically create or reuse the object pool in ~/.gitx.
 gitx clone https://github.com/you/project.git project
 
 # Borrow from the pool for another checkout.

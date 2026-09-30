@@ -40,7 +40,7 @@ export default function Home() {
               alternates, reducing duplicate storage across clones and forks.
             </p>
             <pre className={styles.example}>
-              <code>{`# Populate the object pool in ~/.cache/gitx.
+              <code>{`# Populate the object pool in ~/.gitx.
 gitx clone https://github.com/you/project.git project
 
 # Another checkout borrows objects from the same pool.

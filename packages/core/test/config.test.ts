@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -32,6 +32,8 @@ it('uses only the default or environment store and ignores Git store configurati
   const before = await readFile(config, 'utf8');
   expect(await api.storePath()).toBe(store);
   const defaults = createGitx({ cwd: root, env: { ...env, GITX_STORE: undefined } });
+  expect(await defaults.storePath()).toBe(join(root, '.gitx'));
+  await mkdir(join(root, '.cache', 'gitx'), { recursive: true });
   expect(await defaults.storePath()).toBe(join(root, '.cache', 'gitx'));
   const relative = createGitx({ cwd: root, env: { ...env, GITX_STORE: 'custom-store' } });
   expect(await relative.storePath()).toBe(join(root, 'custom-store'));

@@ -100,7 +100,7 @@ Cache estimates count the reduction in private pack bytes. Counts cover `.pack`,
 
 ## Configuration
 
-The store defaults to `~/.cache/gitx`; `GITX_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `gitx.gitPath`. The pool can be on a different filesystem from the checkout. gitx does not change global Git configuration.
+The store defaults to `~/.gitx`; `GITX_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `gitx.gitPath`. The pool can be on a different filesystem from the checkout. gitx does not change global Git configuration.
 
 ## Store dependency
 

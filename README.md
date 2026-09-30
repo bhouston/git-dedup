@@ -7,12 +7,12 @@
 [![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-gitx keeps Git objects from many remotes in one local object pool. Supported clones and cached repositories use Git alternates to borrow those objects, reducing duplicate storage across checkouts and forks.
+gitx keeps Git objects from many remotes in one local object pool. Supported clones and linked repositories use Git alternates to borrow those objects, reducing duplicate storage across checkouts and forks. gitx is not a disposable cache: linked checkouts depend on the store.
 
 In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), gitx uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
 
 ```sh
-# Populate the shared object pool in ~/.cache/gitx.
+# Populate the shared object pool in ~/.gitx.
 gitx clone https://github.com/you/project.git project
 
 # Another checkout borrows objects from the same pool.
@@ -87,7 +87,7 @@ Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata,
 
 ## Configuration
 
-The default store is `~/.cache/gitx`. Override it with `GITX_STORE`:
+The default store is `~/.gitx`. Override it with `GITX_STORE`:
 
 ```sh
 export GITX_STORE="$HOME/my-gitx-store"
