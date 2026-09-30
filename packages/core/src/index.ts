@@ -296,6 +296,15 @@ async function setAlternate(gitdir: string, pool: string): Promise<void> {
   await writeFile(alternate, existing + target + '\n');
 }
 
+async function removeLegacyKeeps(gitdir: string): Promise<void> {
+  const packDirectory = join(gitdir, 'objects', 'pack');
+  for (const name of await readdir(packDirectory).catch(() => [])) {
+    if (!name.endsWith('.keep')) continue;
+    const path = join(packDirectory, name);
+    if ((await readFile(path, 'utf8').catch(() => '')) === 'gitx base pack\n') await rm(path);
+  }
+}
+
 export function createGitx(options: GitxOptions = {}) {
   const cwd = resolve(options.cwd ?? process.cwd());
   const incomingEnv: NodeJS.ProcessEnv = { ...process.env, ...options.env };
@@ -611,6 +620,7 @@ export function createGitx(options: GitxOptions = {}) {
         await fetchRemote(root, url!, key);
         process.stderr.write(`gitx: caching ${repo}: sharing objects\n`);
         await setAlternate(commonGitdir, pool);
+        await removeLegacyKeeps(commonGitdir);
         await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
         await checked(['fsck', '--connectivity-only', '--no-reflogs'], repo);
         result.cached++;

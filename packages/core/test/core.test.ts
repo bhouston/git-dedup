@@ -1,7 +1,7 @@
 import { afterEach, expect, it } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdtemp, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGitx, keyForRemote, type StorageReport } from '../src/index.js';
@@ -140,6 +140,26 @@ it('caches an existing repo including a local-only commit', async () => {
   expect(git(['show', 'HEAD:unique.txt'], consumer)).toBe('local');
   git(['fsck', '--full'], consumer);
   expect((await api.storeInfo()).remoteCount).toBe(1);
+});
+
+it('removes only legacy gitx pack keeps during cache migration', async () => {
+  const { root, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  git(['repack', '-a', '-d'], consumer);
+  const packDirectory = join(consumer, '.git', 'objects', 'pack');
+  const pack = (await readdir(packDirectory)).find((name) => name.endsWith('.pack'))!;
+  const legacyKeep = join(packDirectory, pack.replace(/\.pack$/, '.keep'));
+  await writeFile(legacyKeep, 'gitx base pack\n');
+  const unrelatedKeep = join(packDirectory, 'unrelated.keep');
+  await writeFile(unrelatedKeep, 'owned by another tool\n');
+  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  expect((await api.cache(consumer)).cached).toBe(1);
+  await expect(stat(legacyKeep)).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await readFile(unrelatedKeep, 'utf8')).toBe('owned by another tool\n');
+  await expectAlternate(store, join(consumer, '.git'));
+  expect(git(['count-objects', '-v'], consumer)).toContain('in-pack: 0');
+  git(['fsck', '--full'], consumer);
 });
 
 it('reuses a preseeded gitdir for submodule update', async () => {
