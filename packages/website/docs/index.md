@@ -43,6 +43,7 @@ gitx cache .
 
 # View the store.
 gitx store
+gitx store list
 ```
 
 See the [CLI reference](/docs/cli) for commands or [agent setup](./agents.md) for coding agents.

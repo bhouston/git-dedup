@@ -26,6 +26,10 @@ export interface StoreInfo {
   sizeBytes: number;
   remoteCount: number;
 }
+export interface StoreRemote {
+  key: string;
+  remote: string;
+}
 export interface DoctorCheck {
   name: string;
   ok: boolean;
@@ -673,6 +677,33 @@ export function createGitx(options: GitxOptions = {}) {
     };
   }
 
+  async function listRemotes(): Promise<StoreRemote[]> {
+    const directory = join(await storePath(), 'remotes');
+    const entries = await readdir(directory).catch((error: NodeJS.ErrnoException) => {
+      if (error.code === 'ENOENT') return [];
+      throw error;
+    });
+    const remotes = await Promise.all(
+      entries
+        .filter((name) => name.endsWith('.json'))
+        .map(async (name): Promise<StoreRemote> => {
+          const value: unknown = JSON.parse(await readFile(join(directory, name), 'utf8'));
+          if (
+            !value ||
+            typeof value !== 'object' ||
+            !('key' in value) ||
+            typeof value.key !== 'string' ||
+            !('remote' in value) ||
+            typeof value.remote !== 'string' ||
+            `${remoteId(value.key)}.json` !== name
+          )
+            throw new Error(`Invalid gitx remote registration: ${name}`);
+          return { key: value.key, remote: value.remote };
+        }),
+    );
+    return remotes.toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
+  }
+
   async function fetch(): Promise<{ fetched: number }> {
     const root = await storePath();
     let fetched = 0;
@@ -798,7 +829,7 @@ export function createGitx(options: GitxOptions = {}) {
     return result.stdout.trim();
   }
 
-  return { run, cache, storeInfo, fetch, gc, doctor, storePath, gitVersion };
+  return { run, cache, storeInfo, listRemotes, fetch, gc, doctor, storePath, gitVersion };
 }
 
 function processExists(pid: number): boolean {
