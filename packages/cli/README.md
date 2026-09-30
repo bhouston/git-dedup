@@ -4,10 +4,12 @@
 [![npm downloads](https://img.shields.io/npm/dm/git-dedup.svg)](https://www.npmjs.com/package/git-dedup)
 [![CI](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-git-dedup-blue)](https://git-dedup.ben3d.ca/)
+[![Documentation](https://img.shields.io/badge/docs-git--dedup-blue)](https://git-dedup.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-git-dedup keeps Git objects from many remotes in one local object pool. Supported clones and linked repositories use Git alternates to borrow those objects, reducing duplicate storage across checkouts and forks. git-dedup is not a disposable cache: linked checkouts depend on the store.
+**Many coding agents, one copy of Git history.**
+
+Coding agents and editors clone the same repositories again and again: one checkout per task, per agent, per review. Each clone normally carries its own full copy of the history. git-dedup is a Git wrapper whose clones, forks, and worktree submodules share one local object pool, so every new checkout reuses the history already on disk.
 
 In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
 
@@ -90,9 +92,7 @@ git-dedup --stats clone https://github.com/bhouston/git-dedup.git git-dedup-extr
 git-dedup store add ./git-dedup-extra --stats
 ```
 
-Reports go to stderr and show whether the pool already existed. Adoption reports compare private pack bytes before and after adoption. Clone reports identify use of Git alternates; they do not estimate disk savings.
-
-Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects. These are logical file-size estimates, not measured disk blocks reclaimed. The first use populates the pool and can increase total disk use. Plain Git fallback does not print a report.
+Reports go to stderr. See [storage reports](https://git-dedup.ben3d.ca/docs/how-it-works#storage-reports) for what they measure.
 
 ## Configuration
 

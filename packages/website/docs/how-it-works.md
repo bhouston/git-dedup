@@ -11,3 +11,9 @@ The pool records newly seen consumer ref tips during checkout adoption. `store g
 Supported `submodule update --init` commands prepare missing submodule Git directories with the same pool as reference. Recursive updates cover nested modules, including in new worktrees. Other Git commands and unsupported clone forms pass through to native Git, including local source paths, shallow or partial clones, explicit reference options, and SHA-256 repositories.
 
 The checkout depends on the pool. See the [storage guide](safety.md) before moving or deleting it.
+
+## Storage reports
+
+`git-dedup --stats clone` and `git-dedup store add --stats` print a storage report to stderr. The report shows whether the pool already existed. Adoption reports compare private pack bytes before and after adoption. Clone reports identify use of Git alternates; they do not estimate disk savings.
+
+Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects. These are logical file-size estimates, not measured disk blocks reclaimed. The first use populates the pool and can increase total disk use. Plain Git fallback does not print a report.

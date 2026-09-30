@@ -14,8 +14,6 @@ git-dedup never saves credentials embedded in a remote URL, such as `https://use
 
 The store defaults to `~/.git-dedup`; set `GIT_DEDUP_STORE` to choose another location before adding a checkout or cloning. Changing this variable later does not rewrite existing alternate paths.
 
-When upgrading from gitx, git-dedup automatically reuses an existing store at its old location. You can also set `GIT_DEDUP_STORE` explicitly. Keep the existing directory in place while any checkout points to it.
-
 ## Containers, sandboxes, and other machines
 
 The alternates path is absolute. A linked checkout breaks wherever that path is missing or unreadable:
