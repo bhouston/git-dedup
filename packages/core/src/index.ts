@@ -168,6 +168,15 @@ function fallback(args: string[], reason: string): undefined {
   return undefined;
 }
 
+/** The last Git `fatal:` or `error:` line of a failure, without captured progress output. */
+function gitFailure(error: unknown): string {
+  const line = String(error)
+    .match(/\b(?:fatal|error): [^\r\n]*/g)
+    ?.at(-1)
+    ?.trim();
+  return line ? ` (${line})` : '';
+}
+
 /** Returns the parsed clone, or the reason git-dedup cannot handle it. */
 function parseClone(
   args: string[],
@@ -659,18 +668,22 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     // while other processes fetch or repack, and the new tips are pinned right after.
     let poolReused = false;
     let fetched: string | undefined;
+    let fetchError: unknown;
     // Like git clone: progress on a terminal or with --progress, never with -q/--quiet.
     const quiet = parsed.forwarded.some((arg) => arg === '-q' || arg === '--quiet');
     const progress = !quiet && (process.stderr.isTTY || parsed.forwarded.includes('--progress'));
     try {
       fetched = await withLock(root, async () => {
         poolReused = options.onStorageReport ? await isPresent(poolPath(root)) : false;
-        return fetchRemote(root, parsed.remote, key, progress).catch(() => undefined);
+        return fetchRemote(root, parsed.remote, key, progress).catch((error: unknown) => {
+          fetchError = error;
+          return undefined;
+        });
       });
     } catch {
       return fallback(args, 'object pool lock unavailable');
     }
-    if (!fetched) return fallback(args, 'object pool unavailable');
+    if (!fetched) return fallback(args, `object pool unavailable${gitFailure(fetchError)}`);
     const pool = fetched;
     const cloneArgs = ['clone', '--reference', pool, ...parsed.forwarded, parsed.remote, destination];
     const result = await git(cloneArgs, effectiveCwd, true);
@@ -770,8 +783,8 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     }
     try {
       await seedSubmodules(at);
-    } catch {
-      fallback(args, 'submodule adoption unavailable');
+    } catch (error) {
+      fallback(args, `submodule adoption unavailable${gitFailure(error)}`);
     }
     const recursive =
       args.includes('--recursive') &&

@@ -539,6 +539,10 @@ it('reports each fallback to plain Git once unless quiet', async () => {
     expect(messages()).toEqual([]);
     expect(await api.run(['clone', remote, 'full'])).not.toBe(0);
     expect(messages()).toEqual([`git-dedup: ${join(root, 'full')} is not an empty directory; using plain Git\n`]);
+    output.mockClear();
+    expect(await api.run(['clone', '--progress', 'git://127.0.0.1:1/team/project.git', 'offline'])).not.toBe(0);
+    expect(messages()).toHaveLength(1);
+    expect(messages()[0]).toMatch(/^git-dedup: object pool unavailable \(fatal: [^\r\n]*\); using plain Git\n$/);
   } finally {
     output.mockRestore();
   }
