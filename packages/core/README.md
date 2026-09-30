@@ -13,6 +13,8 @@ Build Node.js tools that share one Git object pool across checkouts. The core ow
 
 Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules. The pool holds objects from different remotes, including forks and unrelated repositories. Checkouts borrow from it through Git alternates.
 
+In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), gitx uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
+
 **[Documentation](https://gitx.ben3d.ca/) · [Source](https://github.com/bhouston/gitx) · [CLI package](https://www.npmjs.com/package/@bhouston/gitx)**
 
 ## Installation

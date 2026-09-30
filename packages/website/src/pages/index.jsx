@@ -53,7 +53,9 @@ git diff
 git log --oneline`}</code>
             </pre>
             <p className={styles.performance}>
-              Repeated clones can borrow objects already in the pool, reducing download and storage work.
+              In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees
+              counted once), gitx uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about
+              24.4 GB (69%).
             </p>
             <div className={styles.actions}>
               <Link className={styles.primary} to="/docs">
