@@ -36,8 +36,15 @@ it('uses the new default, preserves legacy stores, and respects explicit overrid
   const defaults = createGitDedup({ cwd: root, env: { ...env, GIT_DEDUP_STORE: undefined } });
   expect(await defaults.storePath()).toBe(join(root, '.git-dedup'));
   await mkdir(join(root, '.gitx'));
+  await writeFile(join(root, '.gitx', 'unrelated'), 'not a store\n');
+  expect(await defaults.storePath()).toBe(join(root, '.git-dedup'));
+  await writeFile(join(root, '.gitx', '.gitx-store'), 'something else\n');
+  expect(await defaults.storePath()).toBe(join(root, '.git-dedup'));
+  await writeFile(join(root, '.gitx', '.gitx-store'), 'gitx-store-v2\n');
   expect(await defaults.storePath()).toBe(join(root, '.gitx'));
   await mkdir(join(root, '.cache', 'gitx'), { recursive: true });
+  expect(await defaults.storePath()).toBe(join(root, '.gitx'));
+  await writeFile(join(root, '.cache', 'gitx', '.gitx-store'), 'gitx-store-v2\n');
   expect(await defaults.storePath()).toBe(join(root, '.cache', 'gitx'));
   const relative = createGitDedup({ cwd: root, env: { ...env, GIT_DEDUP_STORE: 'custom-store' } });
   expect(await relative.storePath()).toBe(join(root, 'custom-store'));
