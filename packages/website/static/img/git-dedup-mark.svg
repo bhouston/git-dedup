@@ -1,5 +1,5 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-labelledby="title">
-  <title id="title">gitx</title>
+  <title id="title">git-dedup</title>
   <rect width="64" height="64" rx="16" fill="#142a32"/>
   <path d="M16 32h32M32 16v32" stroke="#72e0bd" stroke-width="6" stroke-linecap="round"/>
   <circle cx="16" cy="32" r="5" fill="#fff4d7"/>

@@ -15,18 +15,21 @@ export async function loadCommands(): Promise<CommandModule[]> {
 
 export async function documentFromCommands(commands: CommandModule[]): Promise<OpenCliDocument> {
   const packageInfo = JSON.parse(readFileSync(join(here, '../package.json'), 'utf8')) as Record<string, unknown>;
-  const document = await fromYargsAsync(commands, infoFromPackageJson(packageInfo, { title: 'gitx', binary: 'gitx' }));
+  const document = await fromYargsAsync(
+    commands,
+    infoFromPackageJson(packageInfo, { title: 'git-dedup', binary: 'git-dedup' }),
+  );
   document.global = {
     flags: [
       {
         name: 'stats',
         type: 'boolean',
-        summary: 'Show object pool use and cache storage measurements',
+        summary: 'Show object pool use and checkout adoption measurements',
       },
     ],
   };
   document.commands ??= {};
-  document.commands['gitx clone'] = {
+  document.commands['git-dedup clone'] = {
     summary: 'Clone a repository through the shared store when supported',
     args: [
       { name: 'repository', required: true },

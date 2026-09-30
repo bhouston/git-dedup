@@ -1,6 +1,6 @@
 import type { ArgumentsCamelCase, Argv } from 'yargs';
-import type { CacheResult, StorageReport } from '@bhouston/gitx-core';
-import { gitx } from '../context.js';
+import type { CacheResult, StorageReport } from 'git-dedup-core';
+import { dedup } from '../context.js';
 import { printStorageReports } from '../stats.js';
 import { discoverCheckouts } from '../discover.js';
 
@@ -47,7 +47,7 @@ export const handler = async (
 ) => {
   if (args.dryRun && !args.all) throw new Error('--dry-run requires --all');
   const reports: StorageReport[] = [];
-  const client = gitx(args.stats ? { onStorageReport: (report) => reports.push(report) } : undefined);
+  const client = dedup(args.stats ? { onStorageReport: (report) => reports.push(report) } : undefined);
   if (args.all) {
     const targets = await discoverCheckouts(args.path ?? process.cwd());
     console.log(`Discovered ${targets.length} checkout(s):`);

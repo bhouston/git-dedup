@@ -65,15 +65,15 @@ importers:
 
   packages/cli:
     dependencies:
-      '@bhouston/gitx-core':
-        specifier: workspace:*
-        version: link:../core
       '@clidoc/core':
         specifier: ^0.1.0
         version: 0.1.0
       '@clidoc/yargs':
         specifier: ^1.1.0
         version: 1.1.0
+      git-dedup-core:
+        specifier: workspace:*
+        version: link:../core
       yargs:
         specifier: ^18.0.0
         version: 18.2.0

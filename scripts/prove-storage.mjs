@@ -4,16 +4,16 @@ import { mkdtemp, mkdir, writeFile, readFile, readdir, realpath, rm } from 'node
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
-import { createGitx } from '../packages/core/dist/index.js';
+import { createGitDedup } from '../packages/core/dist/index.js';
 
 // A reproducible, offline proof using two real remotes over loopback Git transport.
-const root = await realpath(await mkdtemp(join(tmpdir(), 'gitx-proof-')));
+const root = await realpath(await mkdtemp(join(tmpdir(), 'git-dedup-proof-')));
 const store = join(root, 'store');
 const env = {
   ...process.env,
   GIT_CONFIG_NOSYSTEM: '1',
   GIT_CONFIG_GLOBAL: join(root, 'gitconfig'),
-  GITX_STORE: store,
+  GIT_DEDUP_STORE: store,
   GIT_TERMINAL_PROMPT: '0',
 };
 const git = (cwd, ...args) =>
@@ -26,7 +26,7 @@ try {
     const repo = join(remotes, 'team', name);
     await mkdir(repo, { recursive: true });
     git(repo, 'init', '-b', 'main');
-    git(repo, 'config', 'user.name', 'Gitx Proof');
+    git(repo, 'config', 'user.name', 'Git Dedup Proof');
     git(repo, 'config', 'user.email', 'proof@example.invalid');
     for (let i = 0; i < 3; i++) {
       await writeFile(join(repo, 'data.txt'), `${name} revision ${i}\n`.repeat(10000));
@@ -67,7 +67,7 @@ try {
       }
     });
   });
-  const api = createGitx({ cwd: root, env });
+  const api = createGitDedup({ cwd: root, env });
   const clones = ['alpha-one', 'alpha-two', 'beta-one'];
   await Promise.all(
     clones.map(async (name) => {

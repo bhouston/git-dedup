@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, access } from 'node:
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createGitx } from '../src/index.js';
+import { createGitDedup } from '../src/index.js';
 
 it('intercepts worktree add and initializes pool-backed submodules', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gitx-worktree-'));
@@ -12,8 +12,8 @@ it('intercepts worktree add and initializes pool-backed submodules', async () =>
     ...process.env,
     GIT_CONFIG_GLOBAL: join(root, 'config'),
     GIT_CONFIG_NOSYSTEM: '1',
-    GITX_STORE: join(root, 'store'),
-    GITX_ACTIVE: undefined,
+    GIT_DEDUP_STORE: join(root, 'store'),
+    GIT_DEDUP_ACTIVE: undefined,
   };
   const git = (at: string, ...args: string[]) =>
     execFileSync('git', args, { cwd: at, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
@@ -69,7 +69,7 @@ it('intercepts worktree add and initializes pool-backed submodules', async () =>
     const remote = `git://127.0.0.1:${port}/team/library`;
     git(project, 'submodule', 'add', remote, 'deps/library');
     git(project, 'commit', '-am', 'add library');
-    const api = createGitx({ cwd: root, env });
+    const api = createGitDedup({ cwd: root, env });
     expect(await api.run(['clone', `git://127.0.0.1:${port}/team/project`, 'consumer'])).toBe(0);
     const consumer = join(root, 'consumer');
     const worker = join(root, 'worker');
@@ -79,7 +79,7 @@ it('intercepts worktree add and initializes pool-backed submodules', async () =>
     const moduleGitdir = git(module, 'rev-parse', '--absolute-git-dir');
     expect(moduleGitdir).toContain('/worktrees/worker/modules/deps/library');
     expect((await readFile(join(moduleGitdir, 'objects', 'info', 'alternates'), 'utf8')).trim()).toBe(
-      join(await realpath(env.GITX_STORE), 'pool.git', 'objects'),
+      join(await realpath(env.GIT_DEDUP_STORE), 'pool.git', 'objects'),
     );
     // Native no-checkout semantics must survive interception.
     const emptyWorker = join(root, 'empty-worker');

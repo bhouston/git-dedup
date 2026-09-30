@@ -4,7 +4,7 @@ import { createServer } from 'node:net';
 import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createGitx, keyForRemote, type StorageReport } from '../src/index.js';
+import { createGitDedup, keyForRemote, type StorageReport } from '../src/index.js';
 
 const roots: string[] = [];
 const daemons: ChildProcess[] = [];
@@ -20,7 +20,7 @@ function git(args: string[], cwd: string) {
     encoding: 'utf8',
     env: {
       ...process.env,
-      GITX_ACTIVE: '1',
+      GIT_DEDUP_ACTIVE: '1',
       GIT_CONFIG_NOSYSTEM: '1',
       ...(root ? { GIT_CONFIG_GLOBAL: join(root, 'global.gitconfig') } : {}),
     },
@@ -30,7 +30,7 @@ function git(args: string[], cwd: string) {
 }
 
 function testEnv(root: string, store: string) {
-  return { GITX_STORE: store, GIT_CONFIG_GLOBAL: join(root, 'global.gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
+  return { GIT_DEDUP_STORE: store, GIT_CONFIG_GLOBAL: join(root, 'global.gitconfig'), GIT_CONFIG_NOSYSTEM: '1' };
 }
 
 async function fixture() {
@@ -91,14 +91,14 @@ it('normalizes SSH and HTTPS remote identities', () => {
 
 it('lists registered remotes without creating an empty store', async () => {
   const { root, store } = await fixture();
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await api.listRemotes()).toEqual([]);
   await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
 it('clones twice into one pool and makes both consumers depend on it', async () => {
   const { root, remote, store } = await fixture();
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await api.run(['clone', remote, 'one'])).toBe(0);
   expect(await api.run(['clone', remote, 'two'])).toBe(0);
   for (const name of ['one', 'two']) {
@@ -119,7 +119,7 @@ it('uses one pool for forks with the same commits', async () => {
   await mkdir(join(root, 'remote', 'other'));
   git(['clone', '--bare', source, forkPath], root);
   const fork = remote.replace('/team/', '/other/');
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await api.run(['clone', remote, 'upstream'])).toBe(0);
   expect(await api.run(['clone', fork, 'fork'])).toBe(0);
   expect((await api.storeInfo()).remoteCount).toBe(2);
@@ -144,7 +144,7 @@ it('caches an existing repo including a local-only commit', async () => {
   git(['add', '.'], consumer);
   git(['commit', '-m', 'local'], consumer);
   const localTip = git(['rev-parse', 'HEAD'], consumer);
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect((await api.cache(consumer)).cached).toBe(1);
   await expectAlternate(store, join(consumer, '.git'));
   expect(git(['rev-parse', 'HEAD'], consumer)).toBe(localTip);
@@ -157,7 +157,7 @@ it('skips an unchanged cache rerun without adding pins or refreshing the remote'
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect((await api.cache(consumer)).cached).toBe(1);
   const pool = join(store, 'pool.git');
   const pins = git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/gitx/consumers'], pool);
@@ -187,7 +187,7 @@ it('pins changed local refs once and retains old tips after force updates', asyn
   git(['clone', remote, consumer], root);
   git(['config', 'user.email', 'test@example.test'], consumer);
   git(['config', 'user.name', 'Test'], consumer);
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect((await api.cache(consumer)).cached).toBe(1);
   const original = git(['rev-parse', 'HEAD'], consumer);
   git(['checkout', '--orphan', 'replacement'], consumer);
@@ -233,7 +233,7 @@ it('pins distinct case-colliding ref tips without changing the consumer refs', a
   expect(refsBefore).toContain(`refs/remotes/fork/Feature ${first}`);
   expect(refsBefore).toContain(`refs/remotes/fork/feature ${second}`);
 
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect((await api.cache(consumer)).cached).toBe(1);
   expect(git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/remotes/fork'], consumer)).toBe(refsBefore);
   await api.gc();
@@ -258,7 +258,7 @@ it('adopts local objects while origin is unavailable and refreshes them later', 
   const bare = join(root, 'remote', 'team', 'project.git');
   const unavailable = `${bare}.unavailable`;
   await rename(bare, unavailable);
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   const warning = vi.spyOn(process.stderr, 'write');
   try {
     expect((await api.cache(consumer)).cached).toBe(1);
@@ -288,7 +288,7 @@ it('adopts local objects while origin is unavailable and refreshes them later', 
 
 it('returns a reason for an invalid path and a checkout without origin', async () => {
   const { root, store } = await fixture();
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   const missing = join(root, 'missing');
   expect(await api.cache(missing)).toMatchObject({
     cached: 0,
@@ -310,7 +310,7 @@ it('reports a storage failure without hiding its Git diagnostic', async () => {
   const { root, remote } = await fixture();
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
-  const result = await createGitx({ cwd: root, env: testEnv(root, join(root, 'source')) }).cache(consumer);
+  const result = await createGitDedup({ cwd: root, env: testEnv(root, join(root, 'source')) }).cache(consumer);
   expect(result).toMatchObject({
     cached: 0,
     skipped: 0,
@@ -331,7 +331,7 @@ it('removes only legacy gitx pack keeps during cache migration', async () => {
   await writeFile(legacyKeep, 'gitx base pack\n');
   const unrelatedKeep = join(packDirectory, 'unrelated.keep');
   await writeFile(unrelatedKeep, 'owned by another tool\n');
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect((await api.cache(consumer)).cached).toBe(1);
   await expect(stat(legacyKeep)).rejects.toMatchObject({ code: 'ENOENT' });
   expect(await readFile(unrelatedKeep, 'utf8')).toBe('owned by another tool\n');
@@ -345,7 +345,7 @@ it('rewrites an existing commit graph after repacking into the pool', async () =
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
   git(['commit-graph', 'write', '--reachable'], consumer);
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect((await api.cache(consumer)).cached).toBe(1);
   git(['commit-graph', 'verify'], consumer);
   git(['fsck', '--full'], consumer);
@@ -353,7 +353,7 @@ it('rewrites an existing commit graph after repacking into the pool', async () =
 
 it('removes derived commit graphs from the shared pool', async () => {
   const { root, remote, store } = await fixture();
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
   const pool = join(store, 'pool.git');
   git(['commit-graph', 'write', '--reachable'], pool);
@@ -374,7 +374,7 @@ it('reuses a preseeded gitdir for submodule update', async () => {
   git(['commit', '-am', 'module'], parent);
   git(['submodule', 'deinit', '-f', '--all'], parent);
   await rm(join(parent, '.git', 'modules'), { recursive: true, force: true });
-  const api = createGitx({ cwd: parent, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: parent, env: testEnv(root, store) });
   expect(await api.run(['submodule', 'update', '--init'])).toBe(0);
   expect(git(['show', 'HEAD:hello.txt'], join(parent, 'deps/project'))).toBe('hello');
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], join(parent, 'deps/project')));
@@ -393,7 +393,7 @@ it('preseeds a submodule in a new worktree', async () => {
   await rm(join(parent, '.git', 'modules'), { recursive: true, force: true });
   const worktree = join(root, 'worktree');
   git(['worktree', 'add', '-b', 'second', worktree], parent);
-  const api = createGitx({ cwd: worktree, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: worktree, env: testEnv(root, store) });
   expect(await api.run(['submodule', 'update', '--init'])).toBe(0);
   const module = join(worktree, 'deps/project');
   expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
@@ -405,7 +405,7 @@ it('preseeds a submodule in a new worktree', async () => {
 
 it('follows a remote default branch change when refreshing its pool', async () => {
   const { root, source, remote, store } = await fixture();
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await api.run(['clone', remote, 'before'])).toBe(0);
   git(['checkout', '-b', 'next'], source);
   await writeFile(join(source, 'branch.txt'), 'next\n');
@@ -424,7 +424,7 @@ it('adopts objects from the common gitdir when cache runs in a worktree', async 
   git(['clone', remote, parent], root);
   const worktree = join(root, 'worktree');
   git(['worktree', 'add', '-b', 'second', worktree], parent);
-  const api = createGitx({ cwd: worktree, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: worktree, env: testEnv(root, store) });
   expect((await api.cache()).cached).toBe(1);
   const common = git(['rev-parse', '--path-format=absolute', '--git-common-dir'], worktree);
   await expectAlternate(store, common);
@@ -435,7 +435,11 @@ it('adopts objects from the common gitdir when cache runs in a worktree', async 
 it('passes shallow clones to Git without creating a pool', async () => {
   const { root, remote, store } = await fixture();
   const reports: StorageReport[] = [];
-  const api = createGitx({ cwd: root, env: testEnv(root, store), onStorageReport: (report) => reports.push(report) });
+  const api = createGitDedup({
+    cwd: root,
+    env: testEnv(root, store),
+    onStorageReport: (report) => reports.push(report),
+  });
   expect(await api.run(['clone', '--depth', '1', remote, 'shallow'])).toBe(0);
   expect((await api.storeInfo()).remoteCount).toBe(0);
   expect(git(['show', 'HEAD:hello.txt'], join(root, 'shallow'))).toBe('hello');
@@ -445,7 +449,11 @@ it('passes shallow clones to Git without creating a pool', async () => {
 it('reports pool reuse for accelerated clones', async () => {
   const { root, remote, store } = await fixture();
   const reports: StorageReport[] = [];
-  const api = createGitx({ cwd: root, env: testEnv(root, store), onStorageReport: (report) => reports.push(report) });
+  const api = createGitDedup({
+    cwd: root,
+    env: testEnv(root, store),
+    onStorageReport: (report) => reports.push(report),
+  });
   expect(await api.run(['clone', remote, 'one'])).toBe(0);
   expect(await api.run(['clone', remote, 'two'])).toBe(0);
   expect(reports.map((report) => report.poolReused)).toEqual([false, true]);
@@ -457,7 +465,11 @@ it('reports the reduction in consumer-private pack bytes during cache adoption',
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
   const reports: StorageReport[] = [];
-  const api = createGitx({ cwd: root, env: testEnv(root, store), onStorageReport: (report) => reports.push(report) });
+  const api = createGitDedup({
+    cwd: root,
+    env: testEnv(root, store),
+    onStorageReport: (report) => reports.push(report),
+  });
   expect((await api.cache(consumer)).cached).toBe(1);
   expect(reports).toHaveLength(1);
   const report = reports[0]!;
@@ -484,7 +496,7 @@ it('passes SHA-256 repositories to Git without a mirror', async () => {
   git(['remote', 'add', 'origin', bare], source);
   git(['push', '-u', 'origin', 'main'], source);
   git(['symbolic-ref', 'HEAD', 'refs/heads/main'], bare);
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await api.run(['clone', remote.replace('project.git', 'sha.git'), 'sha'])).toBe(0);
   expect((await api.storeInfo()).remoteCount).toBe(0);
   expect(git(['show', 'HEAD:sha.txt'], join(root, 'sha'))).toBe('sha256');
@@ -504,7 +516,7 @@ it('preseeds nested submodules during recursive update', async () => {
   git(['commit', '-am', 'parent'], parent);
   git(['submodule', 'deinit', '-f', '--all'], parent);
   await rm(join(parent, '.git', 'modules'), { recursive: true, force: true });
-  const api = createGitx({ cwd: parent, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: parent, env: testEnv(root, store) });
   expect(await api.run(['submodule', 'update', '--init', '--recursive'])).toBe(0);
   const leaf = join(parent, 'deps/project/deps/leaf');
   expect(git(['show', 'HEAD:hello.txt'], leaf)).toBe('hello');
@@ -528,7 +540,7 @@ it('resolves relative submodule URLs against the parent remote', async () => {
   git(['remote', 'set-url', 'origin', parentRemote], source);
   git(['push', '-u', 'origin', 'main'], source);
   git(['symbolic-ref', 'HEAD', 'refs/heads/main'], parentRemote);
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await api.run(['clone', '--recurse-submodules', parentUrl, 'parent'])).toBe(0);
   const module = join(root, 'parent', 'deps/project');
   expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
@@ -556,7 +568,7 @@ it('resolves relative submodule URLs against the parent remote', async () => {
 
 it('fetches remotes into namespaced refs and never prunes consumer objects', async () => {
   const { root, source, remote, store } = await fixture();
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
   await writeFile(join(source, 'new.txt'), 'new remote commit');
   git(['add', '.'], source);
@@ -571,7 +583,7 @@ it('fetches remotes into namespaced refs and never prunes consumer objects', asy
 
 it('keeps an old clone valid after a force push and pool gc', async () => {
   const { root, source, remote, store } = await fixture();
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await api.run(['clone', remote, 'old'])).toBe(0);
   const old = git(['rev-parse', 'HEAD'], join(root, 'old'));
   git(['checkout', '--orphan', 'replacement'], source);
@@ -594,7 +606,7 @@ it('leaves local LFS objects untouched when adopting', async () => {
   const local = join(consumer, '.git', 'lfs', 'objects', 'aa', 'bb');
   await mkdir(local, { recursive: true });
   await writeFile(join(local, 'object'), 'locally authored LFS content');
-  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect((await api.cache(consumer)).cached).toBe(1);
   await expect(stat(join(store, 'lfs'))).rejects.toMatchObject({ code: 'ENOENT' });
   expect(await readFile(join(local, 'object'), 'utf8')).toBe('locally authored LFS content');
@@ -609,7 +621,7 @@ it.each([
   { GIT_CONFIG_COUNT: '1', GIT_CONFIG_KEY_0: 'core.abbrev', GIT_CONFIG_VALUE_0: '9' },
 ])('keeps pool sharing with caller environment %j', async (callerEnvironment) => {
   const { root, remote, store } = await fixture();
-  const api = createGitx({ cwd: root, env: { ...testEnv(root, store), ...callerEnvironment } });
+  const api = createGitDedup({ cwd: root, env: { ...testEnv(root, store), ...callerEnvironment } });
   expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
   expect((await api.storeInfo()).remoteCount).toBe(1);
   const consumer = join(root, 'consumer');

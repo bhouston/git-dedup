@@ -1,4 +1,4 @@
-import { createGitx } from '@bhouston/gitx-core';
-import type { GitxOptions } from '@bhouston/gitx-core';
+import { createGitDedup } from 'git-dedup-core';
+import type { GitDedupOptions } from 'git-dedup-core';
 
-export const gitx = (options?: GitxOptions) => createGitx(options);
+export const dedup = (options?: GitDedupOptions) => createGitDedup(options);

@@ -1,13 +1,13 @@
 const clidocPlugin = require('@clidoc/docusaurus');
 
 module.exports = {
-  title: 'gitx',
-  tagline: 'Optimized for short-lived repositories in agentic workflows.',
-  favicon: 'img/gitx-mark.svg',
-  url: process.env.SITE_URL ?? 'https://gitx.ben3d.ca',
+  title: 'git-dedup',
+  tagline: 'Shared Git object storage for lean checkouts.',
+  favicon: 'img/git-dedup-mark.svg',
+  url: process.env.SITE_URL ?? 'https://git-dedup.ben3d.ca',
   baseUrl: process.env.BASE_URL ?? '/',
   organizationName: 'bhouston',
-  projectName: 'gitx',
+  projectName: 'git-dedup',
   onBrokenLinks: 'throw',
   markdown: { format: 'md' },
   presets: [
@@ -20,21 +20,21 @@ module.exports = {
       },
     ],
   ],
-  plugins: [[clidocPlugin, { input: '.generated/gitx.json', outputDir: 'docs/cli', basePath: '/cli' }]],
+  plugins: [[clidocPlugin, { input: '.generated/git-dedup.json', outputDir: 'docs/cli', basePath: '/cli' }]],
   themeConfig: {
     navbar: {
-      title: 'gitx',
-      logo: { alt: 'gitx', src: 'img/gitx-mark.svg' },
+      title: 'git-dedup',
+      logo: { alt: 'git-dedup', src: 'img/git-dedup-mark.svg' },
       items: [
         { to: '/docs', label: 'Get started', position: 'left' },
         { to: '/docs/cli', label: 'CLI', position: 'left' },
         { to: '/docs/how-it-works', label: 'How it works', position: 'left' },
-        { href: 'https://github.com/bhouston/gitx', label: 'GitHub', position: 'right' },
+        { href: 'https://github.com/bhouston/git-dedup', label: 'GitHub', position: 'right' },
       ],
     },
     footer: {
       style: 'dark',
-      copyright: `Copyright © ${new Date().getFullYear()} gitx · MIT · Created with love ❤️ by <a href="https://ben3d.ca">Ben Houston</a> · Sponsored by <a href="https://landofassets.com">Land of Assets</a>`,
+      copyright: `Copyright © ${new Date().getFullYear()} git-dedup · MIT · Created with love ❤️ by <a href="https://ben3d.ca">Ben Houston</a> · Sponsored by <a href="https://landofassets.com">Land of Assets</a>`,
     },
   },
 };
