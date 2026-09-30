@@ -77,14 +77,16 @@ Other Git commands and unsupported clone forms pass through to Git. Local path c
 
 ### Store commands
 
-| Command                                 | Purpose                                                                                                              |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `git-dedup store add [path]`            | Adopt or relink a repository and its submodules; report skipped and failed paths (`--verbose` shows full Git errors) |
-| `git-dedup store add <directory> --all` | Discover and adopt checkouts below a directory; use `--dry-run` to preview                                           |
-| `git-dedup store`                       | Show store path, remote count, size, and Git and pool health checks                                                  |
-| `git-dedup store fetch`                 | Fetch registered remotes into the pool                                                                               |
-| `git-dedup store gc`                    | Compact the pool without pruning consumer objects                                                                    |
-| `git-dedup store prune`                 | Reclaim pool objects no registered checkout uses; refuses while a checkout is missing                                |
+| Command                                  | Purpose                                                                                                              |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `git-dedup store add [path]`             | Adopt or relink a repository and its submodules; report skipped and failed paths (`--verbose` shows full Git errors) |
+| `git-dedup store add <directory> --all`  | Discover and adopt checkouts below a directory; use `--dry-run` to preview                                           |
+| `git-dedup store`                        | Show store path, remote count, size, and Git and pool health checks                                                  |
+| `git-dedup store fetch`                  | Fetch registered remotes into the pool                                                                               |
+| `git-dedup store gc`                     | Compact the pool without pruning consumer objects                                                                    |
+| `git-dedup store prune`                  | Reclaim pool objects no registered checkout uses; refuses while a checkout is missing                                |
+| `git-dedup store remove <path>`          | Detach a checkout: copy its objects back and unlink it from the pool                                                 |
+| `git-dedup store remove --forget <path>` | Unregister a deleted checkout so `store prune` can run                                                               |
 
 ### Optional storage reports
 
