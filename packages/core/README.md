@@ -13,7 +13,7 @@ Build agent runners, editors, and other Node.js tools that create many checkouts
 
 The core owns cloning, submodule and worktree integration, repository consolidation, and store maintenance. It invokes native Git; the CLI handles command parsing and presentation.
 
-In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
+In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus 35.5 GB without sharing, saving about 24.4 GB (70%). Check out time also dropped from over 1 minute to 10 seconds for large repos, an improvement of 600%.
 
 **[Documentation](https://git-dedup.ben3d.ca/) · [Source](https://github.com/bhouston/git-dedup) · [CLI package](https://www.npmjs.com/package/git-dedup)**
 

@@ -4,7 +4,7 @@ title: Get started
 slug: /
 ---
 
-**Many coding agents, one copy of Git history.** git-dedup is a Git wrapper whose clones, forks, and worktree submodules share one local object pool. Agents and editors can create a fresh checkout per task without storing the history again. In one typical setup of 117 checkouts, Git objects take 11.1 GB instead of an estimated 35.5 GB (69% less).
+**Many coding agents, one copy of Git history.** git-dedup is a Git wrapper whose clones, forks, and worktree submodules share one local object pool. Agents and editors can create a fresh checkout per task without storing the history again. In one typical setup of 117 checkouts, Git objects take 11.1 GB instead of 35.5 GB (70% less). Check out time also dropped from over 1 minute to 10 seconds for large repos, an improvement of 600%.
 
 Install git-dedup with npm:
 
