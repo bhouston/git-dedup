@@ -36,7 +36,7 @@ For large repositories, reusing a populated store can turn a **100+ second fresh
 - Fetch and prune the store while preserving consumers' Git objects.
 - Use the TypeScript core library in your own Node.js tools.
 
-Requires **Node.js 22+ and Git**. Tested on macOS and Linux. Git LFS is optional for repositories that use it.
+Requires **Node.js 22+ and Git**. Tested on macOS and Linux.
 
 ## Installation
 
@@ -80,7 +80,7 @@ Unsupported clone forms, including local paths, shallow or partial clones, and S
 
 Reports go to stderr and show whether a mirror was reused or created, bytes shared through hard links, and bytes copied. Clone savings estimate duplicate pack bytes avoided; cache savings compare private pack bytes before and after adoption.
 
-Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects and Git LFS. These are logical file-size estimates, not measured disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet. Plain Git fallback does not print a report.
+Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects. These are logical file-size estimates, not measured disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet. Plain Git fallback does not print a report.
 
 ## Configuration
 
