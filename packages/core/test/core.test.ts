@@ -153,6 +153,37 @@ it('caches an existing repo including a local-only commit', async () => {
   expect((await api.storeInfo()).remoteCount).toBe(1);
 });
 
+it('pins distinct case-colliding ref tips without changing the consumer refs', async () => {
+  const { root, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  git(['config', 'user.email', 'test@example.test'], consumer);
+  git(['config', 'user.name', 'Test'], consumer);
+  git(['commit', '--allow-empty', '-m', 'first local tip'], consumer);
+  const first = git(['rev-parse', 'HEAD'], consumer);
+  git(['update-ref', 'refs/remotes/fork/Feature', first], consumer);
+  git(['pack-refs', '--all'], consumer);
+  git(['commit', '--allow-empty', '-m', 'second local tip'], consumer);
+  const second = git(['rev-parse', 'HEAD'], consumer);
+  git(['update-ref', 'refs/remotes/fork/feature', second], consumer);
+  git(['tag', '-a', 'local-tag', '-m', 'tagged local tip', first], consumer);
+  const tag = git(['rev-parse', 'refs/tags/local-tag'], consumer);
+  const refsBefore = git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/remotes/fork'], consumer);
+  expect(refsBefore).toContain(`refs/remotes/fork/Feature ${first}`);
+  expect(refsBefore).toContain(`refs/remotes/fork/feature ${second}`);
+
+  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  expect((await api.cache(consumer)).cached).toBe(1);
+  expect(git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/remotes/fork'], consumer)).toBe(refsBefore);
+  await api.gc();
+  git(['fsck', '--full'], consumer);
+  const pool = join(store, 'pool.git');
+  for (const oid of [first, second, tag]) {
+    expect(git(['cat-file', '-t', oid], pool)).toBe(oid === tag ? 'tag' : 'commit');
+    expect(git(['for-each-ref', '--format=%(objectname)', 'refs/gitx/consumers'], pool)).toContain(oid);
+  }
+});
+
 it('removes only legacy gitx pack keeps during cache migration', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
