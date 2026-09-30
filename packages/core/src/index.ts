@@ -52,6 +52,19 @@ export interface StoreAddRepositoryResult {
   detail?: string;
 }
 
+export interface StoreFetchResult {
+  fetched: number;
+  failed: number;
+  remotes: StoreFetchRemoteResult[];
+}
+export interface StoreFetchRemoteResult {
+  key: string;
+  status: 'fetched' | 'failed';
+  reason?: string;
+  /** Full underlying error for diagnostic output. */
+  detail?: string;
+}
+
 function addFailureReason(error: unknown, stage: string): string {
   const message = String(error);
   if (/cannot lock ref|reference already exists|case.insensitive|refname collision/i.test(message))
@@ -894,9 +907,9 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return remotes.toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
   }
 
-  async function fetch(): Promise<{ fetched: number }> {
+  async function fetch(): Promise<StoreFetchResult> {
     const root = await storePath();
-    let fetched = 0;
+    const remotes: StoreFetchRemoteResult[] = [];
     await withLock(root, async () => {
       for (const name of await readdir(join(root, 'remotes')).catch(() => [])) {
         if (!name.endsWith('.json')) continue;
@@ -904,12 +917,20 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           key: string;
           remote: string;
         };
-        await fetchRemote(root, remote, key);
-        fetched++;
+        try {
+          await fetchRemote(root, remote, key);
+          remotes.push({ key, status: 'fetched' });
+        } catch (error) {
+          const detail = String(error);
+          const reason = /fatal: (.+)/.exec(detail)?.[1] ?? 'remote fetch failed';
+          remotes.push({ key, status: 'failed', reason, detail });
+        }
       }
-      if (fetched) await checked(['-C', poolPath(root), 'repack', '-d', '--geometric=2']);
+      if (remotes.some((result) => result.status === 'fetched'))
+        await checked(['-C', poolPath(root), 'repack', '-d', '--geometric=2']);
     });
-    return { fetched };
+    const fetched = remotes.filter((result) => result.status === 'fetched').length;
+    return { fetched, failed: remotes.length - fetched, remotes };
   }
 
   async function gc(): Promise<{ compacted: boolean }> {
