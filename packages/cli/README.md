@@ -38,8 +38,6 @@ npm install --global git-dedup
 git-dedup --help
 ```
 
-If you previously installed `@bhouston/gitx`, install `git-dedup` and update scripts or editor settings that call `gitx`. Existing gitx stores and linked checkouts continue to work; the new CLI reuses an existing store automatically.
-
 ## Usage
 
 ```sh
@@ -48,11 +46,11 @@ git-dedup clone https://github.com/bhouston/git-dedup.git git-dedup-main
 git-dedup --stats clone https://github.com/bhouston/git-dedup.git git-dedup-review
 
 # Adopt an existing repository and its discoverable submodules.
-git-dedup cache ./git-dedup-main --stats
+git-dedup store add ./git-dedup-main --stats
 
 # Preview, then adopt every checkout in a workspace directory.
-git-dedup cache ~/Coding --all --dry-run
-git-dedup cache ~/Coding --all
+git-dedup store add ~/Coding --all --dry-run
+git-dedup store add ~/Coding --all
 
 # Ordinary Git commands also work through git-dedup.
 git-dedup -C git-dedup-main status
@@ -71,24 +69,26 @@ Supported updates prepare missing submodule repositories from the pool, includin
 
 Other Git commands and unsupported clone forms pass through to Git. Local path clones, shallow or partial clones, and SHA-256 repositories use ordinary Git behavior.
 
-`cache --all` scans checkout directories below the given path without following symlinks. It skips Git metadata and common dependency/build directories (`node_modules`, `vendor`, `dist`, `build`, `target`, `.next`, `.nuxt`, `.turbo`, `.venv`, and `coverage`). It does not initialize absent submodules. Linked worktrees sharing one Git object database are processed once. Each checkout's outcome appears separately, and a failed checkout does not stop the remaining targets.
+`store add` accepts a local checkout path, not a remote URL. The checkout can then depend on the shared store for Git objects. `store fetch` refreshes registered remotes.
+
+`store add --all` scans checkout directories below the given path without following symlinks. It skips Git metadata and common dependency/build directories (`node_modules`, `vendor`, `dist`, `build`, `target`, `.next`, `.nuxt`, `.turbo`, `.venv`, and `coverage`). It does not initialize absent submodules. Linked worktrees sharing one Git object database are processed once. Each checkout's outcome appears separately, and a failed checkout does not stop the remaining targets.
 
 ### Store commands
 
-| Command                             | Purpose                                                                                                              |
-| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| `git-dedup cache [path]`            | Adopt or relink a repository and its submodules; report skipped and failed paths (`--verbose` shows full Git errors) |
-| `git-dedup cache <directory> --all` | Discover and adopt checkouts below a directory; use `--dry-run` to preview                                           |
-| `git-dedup store`                   | Show store path, remote count, and size                                                                              |
-| `git-dedup store fetch`             | Fetch registered remotes into the pool                                                                               |
-| `git-dedup store gc`                | Compact the pool without pruning consumer objects                                                                    |
-| `git-dedup doctor`                  | Inspect the pool and Git setup                                                                                       |
+| Command                                 | Purpose                                                                                                              |
+| --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `git-dedup store add [path]`            | Adopt or relink a repository and its submodules; report skipped and failed paths (`--verbose` shows full Git errors) |
+| `git-dedup store add <directory> --all` | Discover and adopt checkouts below a directory; use `--dry-run` to preview                                           |
+| `git-dedup store`                       | Show store path, remote count, and size                                                                              |
+| `git-dedup store fetch`                 | Fetch registered remotes into the pool                                                                               |
+| `git-dedup store gc`                    | Compact the pool without pruning consumer objects                                                                    |
+| `git-dedup doctor`                      | Inspect the pool and Git setup                                                                                       |
 
 ### Optional storage reports
 
 ```sh
 git-dedup --stats clone https://github.com/bhouston/git-dedup.git git-dedup-extra
-git-dedup cache ./git-dedup-extra --stats
+git-dedup store add ./git-dedup-extra --stats
 ```
 
 Reports go to stderr and show whether the pool already existed. Adoption reports compare private pack bytes before and after adoption. Clone reports identify use of Git alternates; they do not estimate disk savings.

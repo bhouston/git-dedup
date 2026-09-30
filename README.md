@@ -48,8 +48,6 @@ npm install --global git-dedup
 
 The executable is `git-dedup`. The source repository is [bhouston/git-dedup](https://github.com/bhouston/git-dedup).
 
-If you previously installed `@bhouston/gitx`, install `git-dedup` and update scripts or editor settings that call `gitx`. Existing gitx stores and linked checkouts continue to work; the new CLI reuses an existing store automatically.
-
 ## Quick start
 
 ```sh
@@ -58,7 +56,7 @@ git-dedup clone https://github.com/bhouston/git-dedup.git git-dedup-main
 git-dedup --stats clone https://github.com/bhouston/git-dedup.git git-dedup-review
 
 # Consolidate a repository you already have.
-git-dedup cache ./git-dedup-main --stats
+git-dedup store add ./git-dedup-main --stats
 
 # Inspect the store and your setup.
 git-dedup store

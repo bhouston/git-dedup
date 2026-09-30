@@ -100,8 +100,8 @@ describe('git-dedup CLI', () => {
   it('shows its commands and version', async () => {
     const help = await cli.run(['--help']);
     expect(help).toSucceed();
-    expect(help).toHaveStdout(/cache/);
     expect(help).toHaveStdout(/store/);
+    expect(help).not.toHaveStdout(/cache/);
 
     const version = await cli.run(['--version']);
     expect(version).toSucceed();
@@ -122,6 +122,8 @@ describe('git-dedup CLI', () => {
     expect(doc.global.flags).toContainEqual(expect.objectContaining({ name: 'stats' }));
     expect(doc.commands).toHaveProperty('git-dedup clone');
     expect(doc.commands).toHaveProperty('git-dedup store');
+    expect(doc.commands).toHaveProperty('git-dedup store add');
+    expect(doc.commands).not.toHaveProperty('git-dedup cache');
     expect(doc.commands).toHaveProperty('git-dedup store fetch');
     expect(doc.commands).toHaveProperty('git-dedup store list');
     expect(doc.commands).not.toHaveProperty('git-dedup store refresh');
@@ -133,6 +135,7 @@ describe('git-dedup CLI', () => {
   it('generates documentation for nested store commands', async () => {
     const result = await cli.run(['docgen', '--format', 'markdown']);
     expect(result).toSucceed();
+    expect(result).toHaveStdout('## git-dedup store add');
     expect(result).toHaveStdout('## git-dedup store fetch');
     expect(result).toHaveStdout('## git-dedup store list');
     expect(result).toHaveStdout('## git-dedup store gc');
@@ -202,7 +205,14 @@ describe('git-dedup CLI', () => {
     expect(wrapped.stderr).toBe(native.stderr);
   });
 
-  it('reports clone and cache storage estimates only when requested', async () => {
+  it('rejects the retired cache command', async () => {
+    const dir = await fixture();
+    const result = await cli.run(['cache', dir], { cwd: dir, env: isolatedEnv(dir) });
+    expect(result).toFail();
+    expect(result).not.toHaveStdout(/Added /);
+  });
+
+  it('reports clone and adoption storage estimates only when requested', async () => {
     const { dir, remote } = await gitRemoteFixture();
     const options = { cwd: dir, env: isolatedEnv(dir), timeout: 10_000 };
     const first = await cli.run(['--stats', 'clone', remote, 'first'], options);
@@ -220,14 +230,14 @@ describe('git-dedup CLI', () => {
 
     const native = await commandLine({ command: ['git'], name: 'git' }).run(['clone', remote, 'adopt'], options);
     expect(native).toSucceed();
-    const cache = await cli.run(['cache', 'adopt', '--stats'], options);
-    expect(cache).toSucceed();
-    expect(cache).toHaveStdout(/Cached 1 repository/);
-    expect(cache).toHaveStderr(/private packs .* -> .*/);
-    expect(cache).toHaveStderr(/estimated private pack reduction .* bytes/);
+    const adoption = await cli.run(['store', 'add', 'adopt', '--stats'], options);
+    expect(adoption).toSucceed();
+    expect(adoption).toHaveStdout(/Added 1 repository/);
+    expect(adoption).toHaveStderr(/private packs .* -> .*/);
+    expect(adoption).toHaveStderr(/estimated private pack reduction .* bytes/);
   });
 
-  it('previews and caches discovered checkouts, including nested repositories and submodules', async () => {
+  it('previews and adds discovered checkouts, including nested repositories and submodules', async () => {
     const { dir, remote } = await gitRemoteFixture();
     const env = isolatedEnv(dir);
     const git = (args: string[]) => execFileSync('git', args, { env, stdio: 'pipe' });
@@ -258,7 +268,7 @@ describe('git-dedup CLI', () => {
     git(['-C', failing, 'remote', 'add', 'origin', 'git://127.0.0.1:1/team/missing.git']);
     const options = { cwd: dir, env, timeout: 30_000 };
 
-    const preview = await cli.run(['cache', workspace, '--all', '--dry-run'], options);
+    const preview = await cli.run(['store', 'add', workspace, '--all', '--dry-run'], options);
     expect(preview).toSucceed();
     expect(preview).toHaveStdout(/Discovered 4 checkout\(s\)/);
     expect(preview.stdout).toContain(parent);
@@ -268,9 +278,9 @@ describe('git-dedup CLI', () => {
     expect(preview.stdout).not.toContain(worktree);
     await expect(access(join(dir, 'store'))).rejects.toThrow();
 
-    const run = await cli.run(['cache', workspace, '--all'], options);
+    const run = await cli.run(['store', 'add', workspace, '--all'], options);
     expect(run).toFail();
-    expect(run).toHaveStdout(/Cached 3 repository\(s\); skipped 0; failed 1\./);
+    expect(run).toHaveStdout(/Added 3 repository\(s\); skipped 0; failed 1\./);
     expect(run).toHaveStdout(new RegExp(`Finished ${nested}`));
     expect(run).toHaveStderr(new RegExp(`Failed ${failing}`));
     expect(run).toHaveStdout(new RegExp(`Skipped ${submodule}: handled with`));
@@ -279,30 +289,30 @@ describe('git-dedup CLI', () => {
   it('reports an empty directory without creating a store', async () => {
     const dir = await fixture();
     const options = { cwd: dir, env: isolatedEnv(dir) };
-    const result = await cli.run(['cache', dir, '--all'], options);
+    const result = await cli.run(['store', 'add', dir, '--all'], options);
     expect(result).toSucceed();
     expect(result).toHaveStdout(/Discovered 0 checkout\(s\)/);
-    expect(result).toHaveStdout(/Cached 0 repository\(s\); skipped 0; failed 0\./);
+    expect(result).toHaveStdout(/Added 0 repository\(s\); skipped 0; failed 0\./);
     await expect(access(join(dir, 'store'))).rejects.toThrow();
   });
 
-  it('names skipped and failed cache paths with bounded output and verbose details', async () => {
+  it('names skipped and failed adoption paths with bounded output and verbose details', async () => {
     const { dir, remote } = await gitRemoteFixture();
     const options = { cwd: dir, env: isolatedEnv(dir), timeout: 10_000 };
-    const missing = await cli.run(['cache', 'missing'], options);
+    const missing = await cli.run(['store', 'add', 'missing'], options);
     expect(missing).toSucceed();
     expect(missing).toHaveStderr(/Skipped .*missing: not a Git repository or path is unavailable/);
-    expect(missing).toHaveStdout('Cached 0 repository(s); skipped 1; failed 0.');
+    expect(missing).toHaveStdout('Added 0 repository(s); skipped 1; failed 0.');
 
     const native = await commandLine({ command: ['git'], name: 'git' }).run(['clone', remote, 'consumer'], options);
     expect(native).toSucceed();
     const badStoreOptions = { ...options, env: { ...options.env, GIT_DEDUP_STORE: join(dir, 'source') } };
-    const failed = await cli.run(['cache', 'consumer'], badStoreOptions);
+    const failed = await cli.run(['store', 'add', 'consumer'], badStoreOptions);
     expect(failed).toFail();
     expect(failed).toHaveStderr(/Failed .*consumer: Git storage operation failed/);
-    expect(failed).toHaveStdout('Cached 0 repository(s); skipped 0; failed 1.');
+    expect(failed).toHaveStdout('Added 0 repository(s); skipped 0; failed 1.');
     expect(failed.stderr).not.toContain('git -C');
-    const verbose = await cli.run(['cache', 'consumer', '--verbose'], badStoreOptions);
+    const verbose = await cli.run(['store', 'add', 'consumer', '--verbose'], badStoreOptions);
     expect(verbose).toFail();
     expect(verbose.stderr).toContain('Refusing to adopt a nonempty directory');
   });

@@ -9,7 +9,7 @@ After installing git-dedup globally, you can tell a coding agent to call it expl
 
 Use `git-dedup` in place of `git` for Git commands. It forwards ordinary commands to Git and uses a shared local store for supported clone, submodule, and worktree operations. In particular, use `git-dedup clone <remote> [directory]`, `git-dedup submodule update --init --recursive`, and `git-dedup worktree add <path> [branch]`.
 
-For an existing checkout, `git-dedup cache [path]` can adopt its Git objects into the store. When a storage estimate is useful, use `git-dedup --stats clone <remote> [directory]` or `git-dedup cache [path] --stats`.
+For an existing checkout, `git-dedup store add [path]` can adopt its Git objects into the store. When a storage estimate is useful, use `git-dedup --stats clone <remote> [directory]` or `git-dedup store add [path] --stats`.
 ```
 
 Existing repositories keep normal Git behavior. Commands such as `git-dedup status`, `git-dedup fetch`, and `git-dedup pull` are passed through to Git. Supported operations link a checkout to the shared store; unsupported forms fall back to Git. Keep the store in place while linked checkouts use it. The `--stats` report is optional and estimates logical packed-file reuse, not physical disk usage.

@@ -134,7 +134,7 @@ it('uses one pool for forks with the same commits', async () => {
   git(['fsck', '--full'], join(root, 'fork'));
 });
 
-it('caches an existing repo including a local-only commit', async () => {
+it('adds an existing repo including a local-only commit', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
@@ -145,7 +145,7 @@ it('caches an existing repo including a local-only commit', async () => {
   git(['commit', '-m', 'local'], consumer);
   const localTip = git(['rev-parse', 'HEAD'], consumer);
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  expect((await api.cache(consumer)).cached).toBe(1);
+  expect((await api.add(consumer)).added).toBe(1);
   await expectAlternate(store, join(consumer, '.git'));
   expect(git(['rev-parse', 'HEAD'], consumer)).toBe(localTip);
   expect(git(['show', 'HEAD:unique.txt'], consumer)).toBe('local');
@@ -153,19 +153,19 @@ it('caches an existing repo including a local-only commit', async () => {
   expect((await api.storeInfo()).remoteCount).toBe(1);
 });
 
-it('skips an unchanged cache rerun without adding pins or refreshing the remote', async () => {
+it('skips an unchanged store add rerun without adding pins or refreshing the remote', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  expect((await api.cache(consumer)).cached).toBe(1);
+  expect((await api.add(consumer)).added).toBe(1);
   const pool = join(store, 'pool.git');
   const pins = git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/gitx/consumers'], pool);
   const packNames = (await readdir(join(consumer, '.git', 'objects', 'pack'))).toSorted();
   const output = vi.spyOn(process.stderr, 'write');
   try {
-    expect(await api.cache(consumer)).toMatchObject({
-      cached: 0,
+    expect(await api.add(consumer)).toMatchObject({
+      added: 0,
       skipped: 1,
       failed: 0,
       repositories: [{ path: consumer, status: 'skipped', reason: 'already current' }],
@@ -188,7 +188,7 @@ it('pins changed local refs once and retains old tips after force updates', asyn
   git(['config', 'user.email', 'test@example.test'], consumer);
   git(['config', 'user.name', 'Test'], consumer);
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  expect((await api.cache(consumer)).cached).toBe(1);
+  expect((await api.add(consumer)).added).toBe(1);
   const original = git(['rev-parse', 'HEAD'], consumer);
   git(['checkout', '--orphan', 'replacement'], consumer);
   git(['rm', '-rf', '.'], consumer);
@@ -197,13 +197,13 @@ it('pins changed local refs once and retains old tips after force updates', asyn
   git(['commit', '-m', 'replacement'], consumer);
   const replacement = git(['rev-parse', 'HEAD'], consumer);
   git(['branch', '-D', 'main'], consumer);
-  expect((await api.cache(consumer)).cached).toBe(1);
+  expect((await api.add(consumer)).added).toBe(1);
   const pool = join(store, 'pool.git');
   const pins = git(['for-each-ref', '--format=%(objectname)', 'refs/gitx/consumers'], pool).split('\n');
   expect(pins).toContain(original);
   expect(pins).toContain(replacement);
-  expect(await api.cache(consumer)).toMatchObject({
-    cached: 0,
+  expect(await api.add(consumer)).toMatchObject({
+    added: 0,
     skipped: 1,
     failed: 0,
     repositories: [{ path: consumer, status: 'skipped', reason: 'already current' }],
@@ -234,7 +234,7 @@ it('pins distinct case-colliding ref tips without changing the consumer refs', a
   expect(refsBefore).toContain(`refs/remotes/fork/feature ${second}`);
 
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  expect((await api.cache(consumer)).cached).toBe(1);
+  expect((await api.add(consumer)).added).toBe(1);
   expect(git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/remotes/fork'], consumer)).toBe(refsBefore);
   await api.gc();
   git(['fsck', '--full'], consumer);
@@ -261,7 +261,7 @@ it('adopts local objects while origin is unavailable and refreshes them later', 
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   const warning = vi.spyOn(process.stderr, 'write');
   try {
-    expect((await api.cache(consumer)).cached).toBe(1);
+    expect((await api.add(consumer)).added).toBe(1);
     expect(warning.mock.calls.some(([message]) => String(message).includes('remote refresh deferred'))).toBe(true);
   } finally {
     warning.mockRestore();
@@ -290,16 +290,16 @@ it('returns a reason for an invalid path and a checkout without origin', async (
   const { root, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
   const missing = join(root, 'missing');
-  expect(await api.cache(missing)).toMatchObject({
-    cached: 0,
+  expect(await api.add(missing)).toMatchObject({
+    added: 0,
     skipped: 1,
     failed: 0,
     repositories: [{ path: missing, status: 'skipped', reason: 'not a Git repository or path is unavailable' }],
   });
   const local = join(root, 'local');
   git(['init', local], root);
-  expect(await api.cache(local)).toMatchObject({
-    cached: 0,
+  expect(await api.add(local)).toMatchObject({
+    added: 0,
     skipped: 1,
     failed: 0,
     repositories: [{ path: local, status: 'skipped', reason: 'no origin remote' }],
@@ -310,9 +310,9 @@ it('reports a storage failure without hiding its Git diagnostic', async () => {
   const { root, remote } = await fixture();
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
-  const result = await createGitDedup({ cwd: root, env: testEnv(root, join(root, 'source')) }).cache(consumer);
+  const result = await createGitDedup({ cwd: root, env: testEnv(root, join(root, 'source')) }).add(consumer);
   expect(result).toMatchObject({
-    cached: 0,
+    added: 0,
     skipped: 0,
     failed: 1,
     repositories: [{ path: consumer, status: 'failed', reason: 'Git storage operation failed' }],
@@ -320,7 +320,7 @@ it('reports a storage failure without hiding its Git diagnostic', async () => {
   expect(result.repositories[0]?.detail).toContain('Refusing to adopt a nonempty directory');
 });
 
-it('removes only legacy gitx pack keeps during cache migration', async () => {
+it('removes only legacy gitx pack keeps during adoption', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
@@ -332,7 +332,7 @@ it('removes only legacy gitx pack keeps during cache migration', async () => {
   const unrelatedKeep = join(packDirectory, 'unrelated.keep');
   await writeFile(unrelatedKeep, 'owned by another tool\n');
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  expect((await api.cache(consumer)).cached).toBe(1);
+  expect((await api.add(consumer)).added).toBe(1);
   await expect(stat(legacyKeep)).rejects.toMatchObject({ code: 'ENOENT' });
   expect(await readFile(unrelatedKeep, 'utf8')).toBe('owned by another tool\n');
   await expectAlternate(store, join(consumer, '.git'));
@@ -346,7 +346,7 @@ it('rewrites an existing commit graph after repacking into the pool', async () =
   git(['clone', remote, consumer], root);
   git(['commit-graph', 'write', '--reachable'], consumer);
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  expect((await api.cache(consumer)).cached).toBe(1);
+  expect((await api.add(consumer)).added).toBe(1);
   git(['commit-graph', 'verify'], consumer);
   git(['fsck', '--full'], consumer);
 });
@@ -358,7 +358,7 @@ it('removes derived commit graphs from the shared pool', async () => {
   const pool = join(store, 'pool.git');
   git(['commit-graph', 'write', '--reachable'], pool);
   expect(await stat(join(pool, 'objects', 'info', 'commit-graph'))).toBeDefined();
-  expect((await api.cache(join(root, 'consumer'))).cached).toBe(1);
+  expect((await api.add(join(root, 'consumer'))).added).toBe(1);
   await expect(stat(join(pool, 'objects', 'info', 'commit-graph'))).rejects.toMatchObject({ code: 'ENOENT' });
   git(['fsck', '--full'], join(root, 'consumer'));
 });
@@ -398,7 +398,7 @@ it('preseeds a submodule in a new worktree', async () => {
   const module = join(worktree, 'deps/project');
   expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], module));
-  expect((await api.cache(worktree)).cached).toBe(1);
+  expect((await api.add(worktree)).added).toBe(1);
   git(['fsck', '--full'], join(root, 'parent'));
   git(['fsck', '--full'], module);
 });
@@ -418,14 +418,14 @@ it('follows a remote default branch change when refreshing its pool', async () =
   expect(git(['show', 'HEAD:branch.txt'], join(root, 'after'))).toBe('next');
 });
 
-it('adopts objects from the common gitdir when cache runs in a worktree', async () => {
+it('adopts objects from the common gitdir when store add runs in a worktree', async () => {
   const { root, remote, store } = await fixture();
   const parent = join(root, 'parent');
   git(['clone', remote, parent], root);
   const worktree = join(root, 'worktree');
   git(['worktree', 'add', '-b', 'second', worktree], parent);
   const api = createGitDedup({ cwd: worktree, env: testEnv(root, store) });
-  expect((await api.cache()).cached).toBe(1);
+  expect((await api.add()).added).toBe(1);
   const common = git(['rev-parse', '--path-format=absolute', '--git-common-dir'], worktree);
   await expectAlternate(store, common);
   expect(git(['show', 'HEAD:hello.txt'], worktree)).toBe('hello');
@@ -460,7 +460,7 @@ it('reports pool reuse for accelerated clones', async () => {
   expect(reports.map((report) => report.operation)).toEqual(['clone', 'clone']);
 });
 
-it('reports the reduction in consumer-private pack bytes during cache adoption', async () => {
+it('reports the reduction in consumer-private pack bytes during checkout adoption', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
@@ -470,10 +470,10 @@ it('reports the reduction in consumer-private pack bytes during cache adoption',
     env: testEnv(root, store),
     onStorageReport: (report) => reports.push(report),
   });
-  expect((await api.cache(consumer)).cached).toBe(1);
+  expect((await api.add(consumer)).added).toBe(1);
   expect(reports).toHaveLength(1);
   const report = reports[0]!;
-  expect(report.operation).toBe('cache');
+  expect(report.operation).toBe('add');
   expect(report.poolReused).toBe(false);
   expect(report.beforeUniqueBytes).toBeGreaterThan(0);
   expect(report.afterUniqueBytes).toBeLessThanOrEqual(report.beforeUniqueBytes!);
@@ -549,16 +549,16 @@ it('resolves relative submodule URLs against the parent remote', async () => {
   expect(await api.run(['clone', parentUrl, join(root, 'parent-vscode'), '--progress', '--recursive'])).toBe(0);
   const vscodeModule = join(root, 'parent-vscode', 'deps/project');
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], vscodeModule));
-  expect((await api.cache(join(root, 'parent'))).cached).toBe(2);
-  const unchanged = await api.cache(join(root, 'parent'));
-  expect(unchanged).toMatchObject({ cached: 0, skipped: 2, failed: 0 });
+  expect((await api.add(join(root, 'parent'))).added).toBe(2);
+  const unchanged = await api.add(join(root, 'parent'));
+  expect(unchanged).toMatchObject({ added: 0, skipped: 2, failed: 0 });
   expect(unchanged.repositories).toEqual([
     expect.objectContaining({ path: join(root, 'parent'), status: 'skipped', reason: 'already current' }),
     expect.objectContaining({ path: module, status: 'skipped', reason: 'already current' }),
   ]);
   git(['remote', 'remove', 'origin'], module);
-  const recursive = await api.cache(join(root, 'parent'));
-  expect(recursive).toMatchObject({ cached: 0, skipped: 2, failed: 0 });
+  const recursive = await api.add(join(root, 'parent'));
+  expect(recursive).toMatchObject({ added: 0, skipped: 2, failed: 0 });
   expect(recursive.repositories).toContainEqual(
     expect.objectContaining({ path: module, status: 'skipped', reason: 'no origin remote' }),
   );
@@ -607,7 +607,7 @@ it('leaves local LFS objects untouched when adopting', async () => {
   await mkdir(local, { recursive: true });
   await writeFile(join(local, 'object'), 'locally authored LFS content');
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  expect((await api.cache(consumer)).cached).toBe(1);
+  expect((await api.add(consumer)).added).toBe(1);
   await expect(stat(join(store, 'lfs'))).rejects.toMatchObject({ code: 'ENOENT' });
   expect(await readFile(join(local, 'object'), 'utf8')).toBe('locally authored LFS content');
   git(['fsck', '--full'], consumer);
