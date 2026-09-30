@@ -247,6 +247,7 @@ async function canonicalPath(path: string): Promise<string> {
 
 async function lockDirectory<T>(lock: string, action: () => Promise<T>): Promise<T> {
   await mkdir(dirname(lock), { recursive: true });
+  let ownerless = 0;
   for (let attempts = 0; ; attempts++) {
     try {
       await mkdir(lock);
@@ -254,12 +255,15 @@ async function lockDirectory<T>(lock: string, action: () => Promise<T>): Promise
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      if (attempts > 1200) throw new Error(`Timed out waiting for git-dedup lock: ${lock}`, { cause: error });
       if (attempts === 20) process.stderr.write('git-dedup: waiting for the object pool lock\n');
       const owner = Number((await readFile(join(lock, 'owner'), 'utf8').catch(() => '')).trim());
+      const alive = owner > 0 && processExists(owner);
+      // Wait as long as a live owner holds the lock; only an ownerless lock times out.
+      if (!alive && ++ownerless > 1200)
+        throw new Error(`Timed out waiting for git-dedup lock: ${lock}`, { cause: error });
       const age = Date.now() - (await stat(lock).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs;
       // A dead owner may be reaped. A live but slow Git process must never lose its lock.
-      if (age > 5000 && owner && !processExists(owner)) {
+      if (age > 5000 && owner && !alive) {
         await rm(lock, { recursive: true, force: true });
         continue;
       }
@@ -586,28 +590,37 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     const destination = resolve(effectiveCwd, parsed.destination ?? defaultCloneName(parsed.remote));
     if (await isPresent(destination)) return undefined;
     const root = await storePath();
-    const cloned = await withLock(root, async () => {
-      const poolReused = options.onStorageReport ? await isPresent(poolPath(root)) : false;
-      let pool: string;
-      try {
-        // Like git clone: progress on a terminal or with --progress, never with -q/--quiet.
-        const quiet = parsed.forwarded.some((arg) => arg === '-q' || arg === '--quiet');
-        const progress = !quiet && (process.stderr.isTTY || parsed.forwarded.includes('--progress'));
-        pool = await fetchRemote(root, parsed.remote, key, progress);
-      } catch {
-        process.stderr.write('git-dedup: object pool unavailable; using Git clone\n');
-        return undefined;
-      }
-      const cloneArgs = ['clone', '--reference', pool, ...parsed.forwarded, parsed.remote, destination];
-      const result = await git(cloneArgs, effectiveCwd, true);
-      if (result.code !== 0) return result.code;
-      await pinConsumer(pool, destination, await repoCommonGitdir(destination), await consumerTips(destination));
-      if (options.onStorageReport)
-        emitStorageReport({ operation: 'clone', repository: destination, poolReused, estimatedSavedBytes: 0 });
-      return 0;
-    });
-    if (cloned === 0 && parsed.recurse) return updateSubmodules(['update', '--init', '--recursive'], destination);
-    return cloned;
+    // Lock only the pool writes. The pool never prunes objects, so git clone can read it
+    // while other processes fetch or repack, and the new tips are pinned right after.
+    let poolReused = false;
+    let fetched: string | undefined;
+    // Like git clone: progress on a terminal or with --progress, never with -q/--quiet.
+    const quiet = parsed.forwarded.some((arg) => arg === '-q' || arg === '--quiet');
+    const progress = !quiet && (process.stderr.isTTY || parsed.forwarded.includes('--progress'));
+    try {
+      fetched = await withLock(root, async () => {
+        poolReused = options.onStorageReport ? await isPresent(poolPath(root)) : false;
+        return fetchRemote(root, parsed.remote, key, progress).catch(() => undefined);
+      });
+    } catch {
+      process.stderr.write('git-dedup: object pool lock unavailable; using Git clone\n');
+      return undefined;
+    }
+    if (!fetched) {
+      process.stderr.write('git-dedup: object pool unavailable; using Git clone\n');
+      return undefined;
+    }
+    const pool = fetched;
+    const cloneArgs = ['clone', '--reference', pool, ...parsed.forwarded, parsed.remote, destination];
+    const result = await git(cloneArgs, effectiveCwd, true);
+    if (result.code !== 0) return result.code;
+    const commonGitdir = await repoCommonGitdir(destination);
+    const tips = await consumerTips(destination);
+    await withLock(root, () => pinConsumer(pool, destination, commonGitdir, tips));
+    if (options.onStorageReport)
+      emitStorageReport({ operation: 'clone', repository: destination, poolReused, estimatedSavedBytes: 0 });
+    if (parsed.recurse) return updateSubmodules(['update', '--init', '--recursive'], destination);
+    return 0;
   }
 
   async function seedSubmodules(repo: string): Promise<void> {
