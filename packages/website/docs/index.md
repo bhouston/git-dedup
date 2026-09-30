@@ -41,6 +41,10 @@ gitx worktree add -b review ../review
 # Add the current repository to the store.
 gitx cache .
 
+# Preview every checkout below a directory before caching them.
+gitx cache ~/Coding --all --dry-run
+gitx cache ~/Coding --all
+
 # View the store.
 gitx store
 gitx store list

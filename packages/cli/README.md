@@ -48,6 +48,10 @@ gitx --stats clone https://github.com/bhouston/gitx.git gitx-review
 # Adopt an existing repository and its discoverable submodules.
 gitx cache ./gitx-main --stats
 
+# Preview, then cache every checkout in a workspace directory.
+gitx cache ~/Coding --all --dry-run
+gitx cache ~/Coding --all
+
 # Ordinary Git commands also work through gitx.
 gitx -C gitx-main status
 ```
@@ -65,15 +69,18 @@ Supported updates prepare missing submodule repositories from the pool, includin
 
 Other Git commands and unsupported clone forms pass through to Git. Local path clones, shallow or partial clones, and SHA-256 repositories use ordinary Git behavior.
 
+`cache --all` scans checkout directories below the given path without following symlinks. It skips Git metadata and common dependency/build directories (`node_modules`, `vendor`, `dist`, `build`, `target`, `.next`, `.nuxt`, `.turbo`, `.venv`, and `coverage`). It does not initialize absent submodules. Linked worktrees sharing one Git object database are processed once. Each checkout's outcome appears separately, and a failed checkout does not stop the remaining targets.
+
 ### Store commands
 
-| Command             | Purpose                                                                |
-| ------------------- | ---------------------------------------------------------------------- |
-| `gitx cache [path]` | Adopt or relink an existing repository and its discoverable submodules |
-| `gitx store`        | Show store path, remote count, and size                                |
-| `gitx store fetch`  | Fetch registered remotes into the pool                                 |
-| `gitx store gc`     | Compact the pool without pruning consumer objects                      |
-| `gitx doctor`       | Inspect the pool and Git setup                                         |
+| Command                        | Purpose                                                                    |
+| ------------------------------ | -------------------------------------------------------------------------- |
+| `gitx cache [path]`            | Adopt or relink an existing repository and its discoverable submodules     |
+| `gitx cache <directory> --all` | Discover and cache checkouts below a directory; use `--dry-run` to preview |
+| `gitx store`                   | Show store path, remote count, and size                                    |
+| `gitx store fetch`             | Fetch registered remotes into the pool                                     |
+| `gitx store gc`                | Compact the pool without pruning consumer objects                          |
+| `gitx doctor`                  | Inspect the pool and Git setup                                             |
 
 ### Optional storage reports
 

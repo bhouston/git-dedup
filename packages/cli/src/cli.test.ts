@@ -226,4 +226,63 @@ describe('gitx CLI', () => {
     expect(cache).toHaveStderr(/private packs .* -> .*/);
     expect(cache).toHaveStderr(/estimated private pack reduction .* bytes/);
   });
+
+  it('previews and caches discovered checkouts, including nested repositories and submodules', async () => {
+    const { dir, remote } = await gitRemoteFixture();
+    const env = isolatedEnv(dir);
+    const git = (args: string[]) => execFileSync('git', args, { env, stdio: 'pipe' });
+    const workspace = join(dir, 'workspace');
+    await mkdir(workspace);
+    const parent = join(workspace, 'parent');
+    const nested = join(parent, 'nested', 'independent');
+    const submodule = join(parent, 'modules', 'child');
+    const worktree = join(workspace, 'parent-worktree');
+    git(['clone', '-q', remote, parent]);
+    git(['-C', parent, 'submodule', 'add', '-q', remote, 'modules/child']);
+    git([
+      '-C',
+      parent,
+      '-c',
+      'user.name=Gitx Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '-qam',
+      'submodule',
+    ]);
+    await mkdir(join(parent, 'nested'), { recursive: true });
+    git(['clone', '-q', remote, nested]);
+    git(['-C', parent, 'worktree', 'add', '-qb', 'review', worktree]);
+    const failing = join(workspace, 'broken');
+    git(['init', '-q', failing]);
+    git(['-C', failing, 'remote', 'add', 'origin', 'git://127.0.0.1:1/team/missing.git']);
+    const options = { cwd: dir, env, timeout: 30_000 };
+
+    const preview = await cli.run(['cache', workspace, '--all', '--dry-run'], options);
+    expect(preview).toSucceed();
+    expect(preview).toHaveStdout(/Discovered 4 checkout\(s\)/);
+    expect(preview.stdout).toContain(parent);
+    expect(preview.stdout).toContain(nested);
+    expect(preview.stdout).toContain(submodule);
+    expect(preview.stdout).toContain(failing);
+    expect(preview.stdout).not.toContain(worktree);
+    await expect(access(join(dir, 'store'))).rejects.toThrow();
+
+    const run = await cli.run(['cache', workspace, '--all'], options);
+    expect(run).toFail();
+    expect(run).toHaveStdout(/Cached 3 repository\(s\); skipped 0; failed 1\./);
+    expect(run).toHaveStdout(new RegExp(`Finished ${nested}`));
+    expect(run).toHaveStderr(new RegExp(`Failed ${failing}`));
+    expect(run).toHaveStdout(new RegExp(`Skipped ${submodule}: handled with`));
+  });
+
+  it('reports an empty directory without creating a store', async () => {
+    const dir = await fixture();
+    const options = { cwd: dir, env: isolatedEnv(dir) };
+    const result = await cli.run(['cache', dir, '--all'], options);
+    expect(result).toSucceed();
+    expect(result).toHaveStdout(/Discovered 0 checkout\(s\)/);
+    expect(result).toHaveStdout(/Cached 0 repository\(s\); skipped 0; failed 0\./);
+    await expect(access(join(dir, 'store'))).rejects.toThrow();
+  });
 });
