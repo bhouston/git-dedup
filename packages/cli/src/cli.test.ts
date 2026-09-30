@@ -123,6 +123,7 @@ describe('gitx CLI', () => {
     expect(doc.commands).toHaveProperty('gitx clone');
     expect(doc.commands).toHaveProperty('gitx store');
     expect(doc.commands).toHaveProperty('gitx store fetch');
+    expect(doc.commands).toHaveProperty('gitx store list');
     expect(doc.commands).not.toHaveProperty('gitx store refresh');
     expect(doc.commands).toHaveProperty('gitx store gc');
     expect(doc.commands).not.toHaveProperty('gitx store clear');
@@ -133,6 +134,7 @@ describe('gitx CLI', () => {
     const result = await cli.run(['docgen', '--format', 'markdown']);
     expect(result).toSucceed();
     expect(result).toHaveStdout('## gitx store fetch');
+    expect(result).toHaveStdout('## gitx store list');
     expect(result).toHaveStdout('## gitx store gc');
     expect(result).not.toHaveStdout('## gitx store set');
   });
@@ -162,6 +164,21 @@ describe('gitx CLI', () => {
     expect(result).toSucceed();
     expect(result).toHaveStdout(join(dir, 'store'));
     expect(result).toHaveStdout('Remotes: 0');
+  });
+
+  it('lists registered remotes and reports an empty store', async () => {
+    const { dir, remote } = await gitRemoteFixture();
+    const options = { cwd: dir, env: isolatedEnv(dir) };
+    const empty = await cli.run(['store', 'list'], options);
+    expect(empty).toSucceed();
+    expect(empty).toHaveStdout('No remotes registered.');
+    await expect(access(join(dir, 'store'))).rejects.toThrow();
+
+    expect(await cli.run(['clone', remote, 'consumer'], options)).toSucceed();
+    const listed = await cli.run(['store', 'list'], options);
+    expect(listed).toSucceed();
+    expect(listed).toHaveStdout('KEY\tFETCH URL');
+    expect(listed).toHaveStdout(remote);
   });
 
   it('preserves raw Git options during passthrough', async () => {

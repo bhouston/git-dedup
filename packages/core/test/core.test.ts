@@ -89,6 +89,13 @@ it('normalizes SSH and HTTPS remote identities', () => {
   expect(keyForRemote('/tmp/project.git')).toBeUndefined();
 });
 
+it('lists registered remotes without creating an empty store', async () => {
+  const { root, store } = await fixture();
+  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  expect(await api.listRemotes()).toEqual([]);
+  await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
 it('clones twice into one pool and makes both consumers depend on it', async () => {
   const { root, remote, store } = await fixture();
   const api = createGitx({ cwd: root, env: testEnv(root, store) });
@@ -116,6 +123,10 @@ it('uses one pool for forks with the same commits', async () => {
   expect(await api.run(['clone', remote, 'upstream'])).toBe(0);
   expect(await api.run(['clone', fork, 'fork'])).toBe(0);
   expect((await api.storeInfo()).remoteCount).toBe(2);
+  expect(await api.listRemotes()).toEqual([
+    { key: '127.0.0.1_' + new URL(fork).port + '/other/project', remote: fork },
+    { key: '127.0.0.1_' + new URL(remote).port + '/team/project', remote },
+  ]);
   expect(git(['rev-parse', 'HEAD'], join(root, 'upstream'))).toBe(git(['rev-parse', 'HEAD'], join(root, 'fork')));
   await expectAlternate(store, join(root, 'upstream', '.git'));
   await expectAlternate(store, join(root, 'fork', '.git'));

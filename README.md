@@ -60,6 +60,7 @@ gitx cache ./gitx-main --stats
 
 # Inspect the store and your setup.
 gitx store
+gitx store list
 gitx doctor
 ```
 
