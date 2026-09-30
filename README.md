@@ -61,7 +61,6 @@ git-dedup store add ./git-dedup-main --stats
 # Inspect the store and your setup.
 git-dedup store
 git-dedup store list
-git-dedup doctor
 ```
 
 Use ordinary Git inside either checkout. git-dedup also forwards Git commands such as `git-dedup status`, `git-dedup diff`, and `git-dedup -C git-dedup-main log --oneline`.

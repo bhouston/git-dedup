@@ -124,6 +124,7 @@ describe('git-dedup CLI', () => {
     expect(doc.commands).toHaveProperty('git-dedup store');
     expect(doc.commands).toHaveProperty('git-dedup store add');
     expect(doc.commands).not.toHaveProperty('git-dedup cache');
+    expect(doc.commands).not.toHaveProperty('git-dedup doctor');
     expect(doc.commands).toHaveProperty('git-dedup store fetch');
     expect(doc.commands).toHaveProperty('git-dedup store list');
     expect(doc.commands).not.toHaveProperty('git-dedup store refresh');
@@ -164,9 +165,24 @@ describe('git-dedup CLI', () => {
   it('runs the default store command from its directory', async () => {
     const dir = await fixture();
     const result = await cli.run(['store'], { env: isolatedEnv(dir) });
-    expect(result).toSucceed();
+    expect(result).toFail();
     expect(result).toHaveStdout(join(dir, 'store'));
     expect(result).toHaveStdout('Remotes: 0');
+    expect(result).toHaveStdout('Size: 0 bytes');
+    expect(result).toHaveStdout(/WARN pool: .*object pool is missing/);
+    expect(result).toHaveStdout(/OK git: .*git version/);
+    await expect(access(join(dir, 'store'))).rejects.toThrow();
+  });
+
+  it('shows passing store health after cloning a remote', async () => {
+    const { dir, remote } = await gitRemoteFixture();
+    const options = { cwd: dir, env: isolatedEnv(dir) };
+    expect(await cli.run(['clone', remote, 'consumer'], options)).toSucceed();
+    const result = await cli.run(['store'], options);
+    expect(result).toSucceed();
+    expect(result).toHaveStdout('Remotes: 1');
+    expect(result).toHaveStdout(/OK pool: .*SHA-1 bare object database/);
+    expect(result).toHaveStdout(/OK git: .*git version/);
   });
 
   it('lists registered remotes and reports an empty store', async () => {

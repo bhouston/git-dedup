@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
@@ -52,12 +52,28 @@ it('uses the new default, preserves legacy stores, and respects explicit overrid
 });
 
 it('doctor reports checks and never changes global Git configuration', async () => {
-  const { config, api } = await fixture();
+  const { config, store, api } = await fixture();
   await writeFile(config, '[user]\n name = Test\n');
   const before = await readFile(config, 'utf8');
   const result = await api.doctor();
   expect(result.checks.map((check) => check.name)).toEqual(['pool', 'git']);
+  expect(result.checks[0]).toMatchObject({ ok: false, detail: expect.stringContaining('object pool is missing') });
+  expect(result.checks[1]).toMatchObject({ ok: true });
+  await expect(readdir(store)).rejects.toMatchObject({ code: 'ENOENT' });
   expect(await readFile(config, 'utf8')).toBe(before);
+});
+
+it('doctor recognizes a valid pool and reports an invalid pool without changing either', async () => {
+  const { root, store, env, api } = await fixture();
+  const pool = join(store, 'pool.git');
+  await mkdir(store);
+  execFileSync('git', ['init', '--bare', '--object-format=sha1', pool], { cwd: root, env, stdio: 'pipe' });
+  expect((await api.doctor()).checks[0]).toMatchObject({ ok: true, detail: expect.stringContaining('SHA-1 bare') });
+  await rm(pool, { recursive: true });
+  await mkdir(pool);
+  await writeFile(join(pool, 'sentinel'), 'unchanged');
+  expect((await api.doctor()).checks[0]).toMatchObject({ ok: false });
+  expect(await readdir(pool)).toEqual(['sentinel']);
 });
 
 it('uses git-dedup.gitPath from Git configuration and accepts the old setting', async () => {
