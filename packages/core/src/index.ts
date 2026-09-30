@@ -30,6 +30,9 @@ export interface StoreRemote {
   key: string;
   remote: string;
 }
+export interface PruneResult {
+  reclaimedBytes: number;
+}
 export interface DoctorCheck {
   name: string;
   ok: boolean;
@@ -400,6 +403,41 @@ async function registerRemote(root: string, remote: string, key: string): Promis
   await writeFile(join(root, 'remotes', `${id}.json`), registration(remote, key));
 }
 
+async function registerConsumer(root: string, id: string, gitdir: string): Promise<void> {
+  await mkdir(join(root, 'consumers'), { recursive: true });
+  await writeFile(join(root, 'consumers', `${id}.json`), JSON.stringify({ gitdir }) + '\n');
+}
+
+async function registeredConsumers(root: string): Promise<Map<string, string>> {
+  const consumers = new Map<string, string>();
+  for (const name of await readdir(join(root, 'consumers')).catch(() => [])) {
+    const value: unknown = JSON.parse(await readFile(join(root, 'consumers', name), 'utf8'));
+    const id = name.replace(/\.json$/, '');
+    if (
+      !/^[a-f0-9-]{36}$/.test(id) ||
+      !value ||
+      typeof value !== 'object' ||
+      !('gitdir' in value) ||
+      typeof value.gitdir !== 'string'
+    )
+      throw new Error(`Invalid git-dedup consumer registration: ${name}`);
+    consumers.set(id, value.gitdir);
+  }
+  return consumers;
+}
+
+async function carriesConsumerId(gitdir: string, id: string): Promise<boolean> {
+  const current = await readFile(join(gitdir, 'gitx-consumer-id'), 'utf8').catch((error: NodeJS.ErrnoException) => {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return '';
+    throw error;
+  });
+  return current.trim() === id;
+}
+
+function checkoutPath(gitdir: string): string {
+  return basename(gitdir) === '.git' ? dirname(gitdir) : gitdir;
+}
+
 async function setAlternate(gitdir: string, pool: string): Promise<void> {
   const alternate = join(gitdir, 'objects', 'info', 'alternates');
   await mkdir(dirname(alternate), { recursive: true });
@@ -563,7 +601,8 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     await checked(['-C', pool, 'config', 'gc.writeCommitGraph', 'false']);
     await checked(['-C', pool, 'config', 'maintenance.commit-graph.enabled', 'false']);
     // Consumers borrow objects that a force push can leave unreachable in the
-    // pool. Automatic gc would prune them, so only store gc compacts the pool.
+    // pool. Automatic gc would prune them, so only store prune deletes objects,
+    // after re-pinning every live consumer.
     await checked(['-C', pool, 'config', 'gc.auto', '0']);
     await checked(['-C', pool, 'config', 'maintenance.auto', 'false']);
     await checked(['-C', pool, 'config', 'gc.pruneExpire', 'never']);
@@ -604,12 +643,22 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return [...new Set([...refs.split('\n').filter(Boolean), head])].toSorted();
   }
 
-  async function pinnedTips(pool: string, id: string): Promise<Set<string>> {
-    return new Set(
-      (await checked(['-C', pool, 'for-each-ref', '--format=%(objectname)', `refs/gitx/consumers/${id}`]))
-        .split('\n')
-        .filter(Boolean),
+  async function unpinnedTips(pool: string, id: string, tips: string[]): Promise<string[]> {
+    // A tip that a remote ref holds needs no pin until the remote moves. Only
+    // store prune deletes objects, and it re-pins every live consumer first.
+    const held = new Set(
+      (
+        await checked([
+          '-C',
+          pool,
+          'for-each-ref',
+          '--format=%(objectname)',
+          `refs/gitx/consumers/${id}`,
+          'refs/gitx/remotes',
+        ])
+      ).split('\n'),
     );
+    return tips.filter((oid) => !held.has(oid));
   }
 
   async function pinConsumer(pool: string, repo: string, commonGitdir: string, tips: string[]): Promise<void> {
@@ -619,8 +668,9 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     // collide on case-insensitive filesystems. Object IDs are safe ref names,
     // and one pin per distinct tip preserves the same reachability.
     const id = await consumerId(commonGitdir);
-    const existing = await pinnedTips(pool, id);
-    const missing = tips.filter((oid) => !existing.has(oid));
+    // Register before pinning: prune refuses to run while pins lack a registration.
+    await registerConsumer(dirname(pool), id, commonGitdir);
+    const missing = await unpinnedTips(pool, id, tips);
     // Keep fetch argument lists bounded for repositories with many refs.
     for (let offset = 0; offset < missing.length; offset += 128)
       await checked([
@@ -664,21 +714,29 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     );
     if (!entries || entries.length) return fallback(args, `${destination} is not an empty directory`);
     const root = await storePath();
-    // Lock only the pool writes. The pool never prunes objects, so git clone can read it
-    // while other processes fetch or repack, and the new tips are pinned right after.
+    // Lock only the pool writes. Only store prune deletes pool objects, so git clone can
+    // read the pool while other processes fetch or repack, and the new tips are pinned right after.
     let poolReused = false;
     let fetched: string | undefined;
     let fetchError: unknown;
     // Like git clone: progress on a terminal or with --progress, never with -q/--quiet.
     const quiet = parsed.forwarded.some((arg) => arg === '-q' || arg === '--quiet');
     const progress = !quiet && (process.stderr.isTTY || parsed.forwarded.includes('--progress'));
+    // Until the pin lands, this clone borrows pool objects that nothing pins, so
+    // store prune refuses while the marker exists. A failed pin leaves it behind.
+    const marker = join(root, 'clones', `${randomUUID()}.json`);
     try {
       fetched = await withLock(root, async () => {
         poolReused = options.onStorageReport ? await isPresent(poolPath(root)) : false;
-        return fetchRemote(root, parsed.remote, key, progress).catch((error: unknown) => {
+        const pool = await fetchRemote(root, parsed.remote, key, progress).catch((error: unknown) => {
           fetchError = error;
           return undefined;
         });
+        if (pool) {
+          await mkdir(dirname(marker), { recursive: true });
+          await writeFile(marker, JSON.stringify({ pid: process.pid, destination }) + '\n');
+        }
+        return pool;
       });
     } catch {
       return fallback(args, 'object pool lock unavailable');
@@ -687,10 +745,16 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     const pool = fetched;
     const cloneArgs = ['clone', '--reference', pool, ...parsed.forwarded, parsed.remote, destination];
     const result = await git(cloneArgs, effectiveCwd, true);
-    if (result.code !== 0) return result.code;
+    if (result.code !== 0) {
+      if (!(await isPresent(join(destination, '.git')))) await rm(marker, { force: true });
+      return result.code;
+    }
     const commonGitdir = await repoCommonGitdir(destination);
     const tips = await consumerTips(destination);
-    await withLock(root, () => pinConsumer(pool, destination, commonGitdir, tips));
+    await withLock(root, async () => {
+      await pinConsumer(pool, destination, commonGitdir, tips);
+      await rm(marker, { force: true });
+    });
     if (options.onStorageReport)
       emitStorageReport({ operation: 'clone', repository: destination, poolReused, estimatedSavedBytes: 0 });
     if (parsed.recurse) return updateSubmodules(['update', '--init', '--recursive'], destination);
@@ -882,8 +946,10 @@ export function createGitDedup(options: GitDedupOptions = {}) {
             registration(url, key);
           const stateMatches =
             poolReused && alreadyLinked && registered && (await readFile(marker, 'utf8').catch(() => '')) === state;
-          const currentPins = stateMatches ? await pinnedTips(pool, await consumerId(commonGitdir)) : undefined;
-          if (currentPins && tips.every((oid) => currentPins.has(oid))) {
+          const id = await consumerId(commonGitdir);
+          if (stateMatches && !(await unpinnedTips(pool, id, tips)).length) {
+            // Checkouts adopted before the consumer registry existed register here.
+            await registerConsumer(root, id, commonGitdir);
             record(repo, 'skipped', 'already current');
             process.stderr.write(`git-dedup: adding ${repo}: already current\n`);
             return;
@@ -963,10 +1029,13 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       try {
         commonGitdir = await repoCommonGitdir(repo);
       } catch (error) {
+        const missing = !(await isPresent(repo));
         record({
           path: repo,
-          status: 'skipped',
-          reason: 'not a Git repository or path is unavailable',
+          status: missing ? 'failed' : 'skipped',
+          reason: missing
+            ? `path not found; if this checkout was deleted, run git-dedup store remove --forget ${repo}`
+            : 'not a Git repository or path is unavailable',
           detail: String(error),
         });
         return;
@@ -1014,6 +1083,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
               `refs/gitx/consumers/${id}`,
             ]);
             if (pins) await checked(['-C', pool, 'update-ref', '--stdin'], cwd, false, pins + '\n');
+            await rm(join(root, 'consumers', `${id}.json`), { force: true });
           }
           await rm(join(commonGitdir, 'gitx-consumer-id'), { force: true });
           for (const gitdir of gitdirs) await rm(join(gitdir, 'gitx-cache.json'), { force: true });
@@ -1099,6 +1169,149 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       await checked(['-C', poolPath(root), 'gc', '--prune=never']);
     });
     return { compacted: true };
+  }
+
+  /** Every object a consumer may borrow from the pool without a pin. */
+  async function liveTips(commonGitdir: string): Promise<string[]> {
+    if (
+      (await git(['--git-dir', commonGitdir, 'config', '--get', 'extensions.refStorage'], commonGitdir)).stdout.trim()
+    )
+      throw new Error(`Refusing to prune: ${commonGitdir} uses a ref storage format that git-dedup cannot inspect`);
+    const tips = new Set<string>();
+    const extra = new Set<string>();
+    const worktrees = (await readdir(join(commonGitdir, 'worktrees')).catch(() => [])).map((name) =>
+      join(commonGitdir, 'worktrees', name),
+    );
+    for (const gitdir of [commonGitdir, ...worktrees]) {
+      // Per-worktree refs and HEAD, then the index: git add skips blobs the pool already has.
+      for (const oid of (await checked(['--git-dir', gitdir, 'for-each-ref', '--format=%(objectname)'], gitdir)).split(
+        '\n',
+      ))
+        if (oid) tips.add(oid);
+      const head = await git(['--git-dir', gitdir, 'rev-parse', '--verify', '-q', 'HEAD'], gitdir);
+      if (head.code === 0) tips.add(head.stdout.trim());
+      if (await isPresent(join(gitdir, 'index'))) {
+        const tree = await git(['--git-dir', gitdir, 'write-tree'], gitdir);
+        if (tree.code !== 0)
+          throw new Error(`Refusing to prune: cannot record the index of ${gitdir}: ${tree.stderr.trim()}`);
+        // Git always has the empty tree, so it needs no pin.
+        if (tree.stdout.trim() !== '4b825dc642cb6eb9a060e54bf8d69288fbee4904') tips.add(tree.stdout.trim());
+      }
+      // Pseudorefs and in-progress rebase or cherry-pick state can name fetched commits no ref holds.
+      const files = ['FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'REBASE_HEAD'].map(
+        (name) => join(gitdir, name),
+      );
+      for (const directory of ['rebase-merge', 'rebase-apply', 'sequencer'])
+        for (const entry of await readdir(join(gitdir, directory), { withFileTypes: true }).catch(() => []))
+          if (entry.isFile()) files.push(join(gitdir, directory, entry.name));
+      for (const file of files)
+        for (const oid of (await readFile(file, 'utf8').catch(() => '')).match(/\b[0-9a-f]{40}\b/g) ?? [])
+          if (!tips.has(oid)) extra.add(oid);
+    }
+    // Commits held only by reflogs or state files; pin the tips of each abandoned history.
+    const abandoned = await checked(
+      ['--git-dir', commonGitdir, 'rev-list', '--parents', '--ignore-missing', '--reflog', ...extra, '--not', '--all'],
+      commonGitdir,
+    );
+    const commits = new Set<string>();
+    const parents = new Set<string>();
+    for (const line of abandoned.split('\n').filter(Boolean)) {
+      const [commit, ...rest] = line.split(' ');
+      commits.add(commit!);
+      for (const parent of rest) parents.add(parent);
+    }
+    for (const commit of commits) if (!parents.has(commit)) tips.add(commit);
+    return [...tips].toSorted();
+  }
+
+  async function prune(): Promise<PruneResult> {
+    const root = await storePath();
+    const pool = poolPath(root);
+    if (!(await isPresent(pool))) return { reclaimedBytes: 0 };
+    return withLock(root, async () => {
+      const registry = await registeredConsumers(root);
+      // A clone between its pool fetch and its pin borrows objects that nothing pins yet.
+      for (const name of await readdir(join(root, 'clones')).catch(() => [])) {
+        const { pid, destination } = JSON.parse(await readFile(join(root, 'clones', name), 'utf8')) as {
+          pid: number;
+          destination: string;
+        };
+        if (processExists(pid))
+          throw new Error(`Refusing to prune: a clone into ${destination} is in progress; retry when it finishes.`);
+        const id = (await readFile(join(destination, '.git', 'gitx-consumer-id'), 'utf8').catch(() => '')).trim();
+        if ((await isPresent(join(destination, '.git'))) && !registry.has(id))
+          throw new Error(
+            `Refusing to prune: the clone into ${destination} was never registered. ` +
+              `Run git-dedup store add ${destination}, or delete that checkout, then retry.`,
+          );
+        await rm(join(root, 'clones', name));
+      }
+      const pinned = new Set(
+        (await checked(['-C', pool, 'for-each-ref', '--format=%(refname)', 'refs/gitx/consumers']))
+          .split('\n')
+          .filter(Boolean)
+          .map((ref) => ref.split('/')[3]!),
+      );
+      const unregistered = [...pinned].filter((id) => !registry.has(id));
+      if (unregistered.length)
+        throw new Error(
+          `Refusing to prune: the pool holds objects for ${unregistered.length} unregistered checkout(s). ` +
+            'Run git-dedup store add for every checkout that uses this store (for example ' +
+            'git-dedup store add --all <directory>), then retry.',
+        );
+      // A moved checkout still borrows through its absolute alternate path, including
+      // objects fetched after its last pin. Only the user can say it was deleted.
+      const missing: string[] = [];
+      for (const [id, gitdir] of registry) if (!(await carriesConsumerId(gitdir, id))) missing.push(gitdir);
+      if (missing.length)
+        throw new Error(
+          `Refusing to prune: ${missing.length} registered checkout(s) cannot be found:\n` +
+            missing.map((gitdir) => `  ${checkoutPath(gitdir)}\n`).join('') +
+            'If this checkout was moved, run git-dedup store add <new path>. ' +
+            'If it was deleted, run git-dedup store remove --forget <old path>.',
+        );
+      for (const gitdir of registry.values()) await pinConsumer(pool, gitdir, gitdir, await liveTips(gitdir));
+      const before = await directorySize(pool);
+      // Explicit expiry: the pool never prunes automatically.
+      await checked(['-C', pool, 'gc', '--prune=now']);
+      return { reclaimedBytes: Math.max(0, before - (await directorySize(pool))) };
+    });
+  }
+
+  /** Release a registered checkout that no longer exists. Returns the Git directories forgotten. */
+  async function forget(path: string): Promise<string[]> {
+    const root = await storePath();
+    const target = resolve(cwd, path);
+    const candidates = new Set<string>();
+    for (const base of [target, await canonicalPath(target)]) candidates.add(base).add(join(base, '.git'));
+    if (!(await isPresent(root))) return [];
+    return lockDirectory(storeLock(root), async () => {
+      const forgotten: string[] = [];
+      let present = false;
+      for (const [id, gitdir] of await registeredConsumers(root)) {
+        if (!candidates.has(gitdir)) continue;
+        // A new checkout at a deleted checkout's path is live; forget only the old registration.
+        if (await carriesConsumerId(gitdir, id)) {
+          present = true;
+          continue;
+        }
+        if (await isPresent(poolPath(root))) {
+          const pins = await checked([
+            '-C',
+            poolPath(root),
+            'for-each-ref',
+            '--format=delete %(refname)',
+            `refs/gitx/consumers/${id}`,
+          ]);
+          if (pins) await checked(['-C', poolPath(root), 'update-ref', '--stdin'], cwd, false, pins + '\n');
+        }
+        await rm(join(root, 'consumers', `${id}.json`));
+        forgotten.push(gitdir);
+      }
+      if (!forgotten.length && present)
+        throw new Error(`${path} still exists; run git-dedup store remove without --forget to detach it`);
+      return forgotten;
+    });
   }
 
   async function doctor(): Promise<DoctorResult> {
@@ -1226,7 +1439,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return result.stdout.trim();
   }
 
-  return { run, add, remove, storeInfo, listRemotes, fetch, gc, doctor, storePath, gitVersion, gitPath };
+  return { run, add, remove, storeInfo, listRemotes, fetch, gc, prune, forget, doctor, storePath, gitVersion, gitPath };
 }
 
 function processExists(pid: number): boolean {

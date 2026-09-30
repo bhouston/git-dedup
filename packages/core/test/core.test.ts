@@ -1,6 +1,6 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
@@ -798,6 +798,161 @@ it('keeps borrowed objects after a force push and automatic pool gc', async () =
   git(['gc', '--auto'], pool);
   expect(git(['show', 'HEAD~1:feature.txt'], consumer)).toBe('feature');
   git(['fsck', '--full'], consumer);
+});
+
+it('prunes objects of a deleted checkout and keeps live consumers valid', async () => {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const pool = join(store, 'pool.git');
+  expect(await api.run(['clone', remote, 'live'])).toBe(0);
+  expect(await api.run(['clone', remote, 'deleted'])).toBe(0);
+  const live = join(root, 'live');
+  const deleted = join(root, 'deleted');
+  for (const checkout of [live, deleted]) {
+    git(['config', 'user.email', 'test@example.test'], checkout);
+    git(['config', 'user.name', 'Test'], checkout);
+  }
+  // The deleted checkout pins a shared blob and a blob no other checkout uses.
+  await writeFile(join(deleted, 'shared.txt'), 'shared content\n');
+  await writeFile(join(deleted, 'unique.txt'), randomBytes(65536).toString('hex'));
+  git(['add', '.'], deleted);
+  git(['commit', '-m', 'deleted work'], deleted);
+  const shared = git(['rev-parse', 'HEAD:shared.txt'], deleted);
+  const unique = git(['rev-parse', 'HEAD:unique.txt'], deleted);
+  expect((await api.add(deleted)).added).toBe(1);
+  // The live checkout builds on upstream, then upstream force-pushes that branch away.
+  const upstream = git(['rev-parse', 'HEAD'], live);
+  git(['commit', '--allow-empty', '-m', 'live work'], live);
+  // A commit visited from upstream stays only in the live HEAD reflog.
+  git(['commit', '--allow-empty', '-m', 'topic'], source);
+  const topic = git(['rev-parse', 'HEAD'], source);
+  git(['push', 'origin', 'HEAD:topic'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+  git(['fetch', 'origin'], live);
+  git(['checkout', '--detach', 'origin/topic'], live);
+  git(['checkout', 'main'], live);
+  git(['checkout', '--orphan', 'replacement'], source);
+  git(['rm', '-rf', '.'], source);
+  await writeFile(join(source, 'replacement.txt'), 'new history\n');
+  git(['add', '.'], source);
+  git(['commit', '-m', 'replacement'], source);
+  git(['push', '--force', 'origin', 'HEAD:main', 'HEAD:topic'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+  git(['fetch', 'origin'], live);
+  git(['worktree', 'add', '--detach', join(root, 'live-worktree'), upstream], live);
+  // Git skips writing a staged blob that the pool already has.
+  await writeFile(join(live, 'staged.txt'), 'shared content\n');
+  git(['add', 'staged.txt'], live);
+  await rm(deleted, { recursive: true, force: true });
+
+  await expect(api.prune()).rejects.toThrow(/cannot be found:\n {2}.*deleted\n/);
+  expect(git(['cat-file', '-e', unique], pool)).toBe('');
+  expect(await api.forget(deleted)).toEqual([join(deleted, '.git')]);
+  const result = await api.prune();
+  expect(result.reclaimedBytes).toBeGreaterThan(0);
+  expect(() => git(['cat-file', '-e', unique], pool)).toThrow();
+  expect(git(['cat-file', '-t', shared], pool)).toBe('blob');
+  git(['fsck', '--full'], live);
+  git(['fsck', '--full'], join(root, 'live-worktree'));
+  expect(git(['rev-parse', 'HEAD~1'], live)).toBe(upstream);
+  expect(git(['show', ':staged.txt'], live)).toBe('shared content');
+  expect(git(['cat-file', '-t', topic], live)).toBe('commit');
+  expect(await readdir(join(store, 'consumers'))).toHaveLength(1);
+  expect(await api.prune()).toMatchObject({ reclaimedBytes: expect.any(Number) });
+  git(['fsck', '--full'], live);
+});
+
+it('refuses to prune pins of unregistered checkouts until store add registers them', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  git(['config', 'user.email', 'test@example.test'], consumer);
+  git(['config', 'user.name', 'Test'], consumer);
+  git(['commit', '--allow-empty', '-m', 'local'], consumer);
+  expect((await api.add(consumer)).added).toBe(1);
+  // Simulate a checkout adopted before the consumer registry existed.
+  await rm(join(store, 'consumers'), { recursive: true });
+  await expect(api.prune()).rejects.toThrow(/unregistered checkout/);
+  expect(await api.add(consumer)).toMatchObject({ skipped: 1 });
+  expect(await api.prune()).toMatchObject({ reclaimedBytes: expect.any(Number) });
+  git(['fsck', '--full'], consumer);
+});
+
+it('unregisters a removed checkout and keeps it and other consumers valid after prune', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const pool = join(store, 'pool.git');
+  expect(await api.run(['clone', remote, 'kept'])).toBe(0);
+  expect(await api.run(['clone', remote, 'detached'])).toBe(0);
+  const detached = join(root, 'detached');
+  git(['config', 'user.email', 'test@example.test'], detached);
+  git(['config', 'user.name', 'Test'], detached);
+  await writeFile(join(detached, 'unique.txt'), randomBytes(65536).toString('hex'));
+  git(['add', '.'], detached);
+  git(['commit', '-m', 'detached work'], detached);
+  const unique = git(['rev-parse', 'HEAD:unique.txt'], detached);
+  expect((await api.add(detached)).added).toBe(1);
+  expect(await readdir(join(store, 'consumers'))).toHaveLength(2);
+  expect(await api.remove(detached)).toMatchObject({ removed: 1, failed: 0 });
+  expect(await readdir(join(store, 'consumers'))).toHaveLength(1);
+  // The detached checkout keeps its own copies, so its pool-only objects can go.
+  expect(await api.prune()).toMatchObject({ reclaimedBytes: expect.any(Number) });
+  expect(() => git(['cat-file', '-e', unique], pool)).toThrow();
+  git(['fsck', '--full'], detached);
+  git(['fsck', '--full'], join(root, 'kept'));
+});
+
+it('refuses to prune for a moved checkout until store add registers its new path', async () => {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'project'])).toBe(0);
+  // Upstream force-pushes away the only commit the moved checkout has, so no pool ref holds it.
+  const original = git(['rev-parse', 'HEAD'], join(root, 'project'));
+  git(['commit', '--amend', '-m', 'rewritten'], source);
+  git(['push', '--force', 'origin', 'main'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+  const moved = join(root, 'project-old');
+  await rename(join(root, 'project'), moved);
+  await expect(api.prune()).rejects.toThrow(
+    /project\n.*If this checkout was moved, run git-dedup store add <new path>\. If it was deleted, run git-dedup store remove --forget <old path>\./,
+  );
+  git(['fsck', '--full'], moved);
+  // A live checkout cannot be forgotten.
+  await rename(moved, join(root, 'project'));
+  await expect(api.forget(join(root, 'project'))).rejects.toThrow(/still exists/);
+  await rename(join(root, 'project'), moved);
+  expect((await api.add(moved)).failed).toBe(0);
+  const registrations = await readdir(join(store, 'consumers'));
+  expect(registrations).toHaveLength(1);
+  expect(JSON.parse(await readFile(join(store, 'consumers', registrations[0]!), 'utf8'))).toEqual({
+    gitdir: join(moved, '.git'),
+  });
+  expect(await api.prune()).toMatchObject({ reclaimedBytes: expect.any(Number) });
+  expect(git(['rev-parse', 'HEAD'], moved)).toBe(original);
+  git(['fsck', '--full'], moved);
+});
+
+it('refuses to prune while a clone has borrowed pool objects but not pinned them', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
+  // A finished clone leaves no marker behind.
+  expect(await readdir(join(store, 'clones'))).toEqual([]);
+  const marker = join(store, 'clones', 'in-flight.json');
+  const pending = join(root, 'pending');
+  // The clone process is still running: git clone finished reading the pool, the pin has not landed.
+  await writeFile(marker, JSON.stringify({ pid: process.pid, destination: pending }) + '\n');
+  await expect(api.prune()).rejects.toThrow(/clone into .*pending is in progress/);
+  // The clone process died after git clone created the checkout but before registering it.
+  await mkdir(join(pending, '.git'), { recursive: true });
+  await writeFile(marker, JSON.stringify({ pid: 2 ** 22 + 1, destination: pending }) + '\n');
+  await expect(api.prune()).rejects.toThrow(/clone into .*pending was never registered/);
+  // A clone that left no checkout holds nothing, so prune clears its marker.
+  await rm(pending, { recursive: true });
+  expect(await api.prune()).toMatchObject({ reclaimedBytes: expect.any(Number) });
+  expect(await readdir(join(store, 'clones'))).toEqual([]);
+  git(['fsck', '--full'], join(root, 'consumer'));
 });
 
 it('leaves local LFS objects untouched when adopting', async () => {
