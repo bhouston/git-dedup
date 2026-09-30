@@ -732,7 +732,7 @@ it('keeps borrowed objects after a force push and automatic pool gc', async () =
   git(['add', '.'], source);
   git(['commit', '-m', 'feature'], source);
   git(['push', 'origin', 'feature'], source);
-  expect(await api.fetch()).toEqual({ fetched: 1 });
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
   git(['fetch', 'origin'], consumer);
   git(['checkout', '-b', 'feature', 'origin/feature'], consumer);
   git(['commit', '--allow-empty', '-m', 'local work'], consumer);
@@ -746,7 +746,7 @@ it('keeps borrowed objects after a force push and automatic pool gc', async () =
     join(root, 'global.gitconfig'),
     '[gc]\n\tauto = 1\n\tautoPackLimit = 1\n\tautoDetach = false\n[maintenance]\n\tautoDetach = false\n[fetch]\n\tunpackLimit = 1\n',
   );
-  expect(await api.fetch()).toEqual({ fetched: 1 });
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
   // Newer Git maintenance may not prune after fetch, so also run gc directly.
   git(['gc', '--auto'], pool);
   expect(git(['show', 'HEAD~1:feature.txt'], consumer)).toBe('feature');
