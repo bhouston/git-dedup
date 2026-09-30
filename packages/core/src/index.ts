@@ -291,6 +291,12 @@ function poolPath(root: string): string {
   return join(root, 'pool.git');
 }
 
+async function registerRemote(root: string, remote: string, key: string): Promise<void> {
+  const id = remoteId(key);
+  await mkdir(join(root, 'remotes'), { recursive: true });
+  await writeFile(join(root, 'remotes', `${id}.json`), JSON.stringify({ key, remote }) + '\n');
+}
+
 async function setAlternate(gitdir: string, pool: string): Promise<void> {
   const alternate = join(gitdir, 'objects', 'info', 'alternates');
   await mkdir(dirname(alternate), { recursive: true });
@@ -423,6 +429,12 @@ export function createGitx(options: GitxOptions = {}) {
 
   async function fetchRemote(root: string, remote: string, key: string): Promise<string> {
     const pool = await ensurePool(root);
+    await fetchRemoteObjects(pool, remote, key);
+    await registerRemote(root, remote, key);
+    return pool;
+  }
+
+  async function fetchRemoteObjects(pool: string, remote: string, key: string): Promise<void> {
     const id = remoteId(key);
     process.stderr.write(`gitx: updating object pool for ${key}\n`);
     await checked([
@@ -434,9 +446,6 @@ export function createGitx(options: GitxOptions = {}) {
       `+refs/heads/*:refs/gitx/remotes/${id}/heads/*`,
       `+refs/tags/*:refs/gitx/remotes/${id}/tags/*`,
     ]);
-    await mkdir(join(root, 'remotes'), { recursive: true });
-    await writeFile(join(root, 'remotes', `${id}.json`), JSON.stringify({ key, remote }) + '\n');
-    return pool;
   }
 
   async function pinConsumer(pool: string, repo: string): Promise<void> {
@@ -634,7 +643,6 @@ export function createGitx(options: GitxOptions = {}) {
         const beforeUniqueBytes = await uniquePackBytes(commonGitdir);
         process.stderr.write(`gitx: caching ${repo}: importing refs\n`);
         await pinConsumer(pool, repo);
-        await fetchRemote(root, url!, key);
         process.stderr.write(`gitx: caching ${repo}: sharing objects\n`);
         await setAlternate(commonGitdir, pool);
         await removeLegacyKeeps(commonGitdir);
@@ -645,6 +653,17 @@ export function createGitx(options: GitxOptions = {}) {
         )
           await checked(['commit-graph', 'write', '--reachable'], repo);
         await checked(['fsck', '--connectivity-only', '--no-reflogs'], repo);
+        // A checkout can be adopted from its local objects without a reachable origin.
+        // Keep the remote registered so store fetch can retry the refresh later.
+        await registerRemote(root, url!, key);
+        try {
+          await fetchRemoteObjects(pool, url!, key);
+        } catch (error) {
+          const reason = error instanceof Error ? error.message.split(' failed: ').at(-1) : String(error);
+          process.stderr.write(
+            `gitx: caching ${repo}: remote refresh deferred for ${key} (${reason?.trim()}); retry with gitx store fetch\n`,
+          );
+        }
         result.cached++;
         if (options.onStorageReport) {
           const afterUniqueBytes = await uniquePackBytes(commonGitdir);

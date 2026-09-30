@@ -1,7 +1,7 @@
-import { afterEach, expect, it } from 'vitest';
+import { afterEach, expect, it, vi } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdtemp, mkdir, readFile, readdir, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGitx, keyForRemote, type StorageReport } from '../src/index.js';
@@ -182,6 +182,47 @@ it('pins distinct case-colliding ref tips without changing the consumer refs', a
     expect(git(['cat-file', '-t', oid], pool)).toBe(oid === tag ? 'tag' : 'commit');
     expect(git(['for-each-ref', '--format=%(objectname)', 'refs/gitx/consumers'], pool)).toContain(oid);
   }
+});
+
+it('adopts local objects while origin is unavailable and refreshes them later', async () => {
+  const { root, source, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  git(['config', 'user.email', 'test@example.test'], consumer);
+  git(['config', 'user.name', 'Test'], consumer);
+  await writeFile(join(consumer, 'unique.txt'), 'local\n');
+  git(['add', '.'], consumer);
+  git(['commit', '-m', 'local'], consumer);
+  const localTip = git(['rev-parse', 'HEAD'], consumer);
+  const bare = join(root, 'remote', 'team', 'project.git');
+  const unavailable = `${bare}.unavailable`;
+  await rename(bare, unavailable);
+  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const warning = vi.spyOn(process.stderr, 'write');
+  try {
+    expect((await api.cache(consumer)).cached).toBe(1);
+    expect(warning.mock.calls.some(([message]) => String(message).includes('remote refresh deferred'))).toBe(true);
+  } finally {
+    warning.mockRestore();
+  }
+  await expectAlternate(store, join(consumer, '.git'));
+  expect(git(['rev-parse', 'HEAD'], consumer)).toBe(localTip);
+  expect(git(['show', 'HEAD:unique.txt'], consumer)).toBe('local');
+  git(['fsck', '--full'], consumer);
+  expect(await api.listRemotes()).toEqual([{ key: keyForRemote(remote), remote }]);
+
+  await rename(unavailable, bare);
+  await writeFile(join(source, 'later.txt'), 'later\n');
+  git(['add', '.'], source);
+  git(['commit', '-m', 'later'], source);
+  git(['push', 'origin', 'main'], source);
+  const laterTip = git(['rev-parse', 'HEAD'], source);
+  expect((await api.fetch()).fetched).toBe(1);
+  git(['cat-file', '-e', laterTip], join(store, 'pool.git'));
+  expect(git(['for-each-ref', '--format=%(objectname)', 'refs/gitx/remotes'], join(store, 'pool.git'))).toContain(
+    laterTip,
+  );
+  git(['fsck', '--full'], consumer);
 });
 
 it('removes only legacy gitx pack keeps during cache migration', async () => {
