@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, readdir, stat, rm, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createServer } from 'node:net';
 import { createGitx } from '../packages/core/dist/index.js';
 
 // A reproducible, offline proof using two real remotes over loopback Git transport.
-const root = await mkdtemp(join(tmpdir(), 'gitx-proof-'));
+const root = await realpath(await mkdtemp(join(tmpdir(), 'gitx-proof-')));
 const store = join(root, 'store');
 const env = {
   ...process.env,
@@ -75,47 +75,36 @@ try {
       assert.equal(await api.run(['clone', `git://127.0.0.1:${port}/team/${remote}`, join(root, name)]), 0);
     }),
   );
-  const packDir = (name) => join(root, name, '.git', 'objects', 'pack');
-  const pack = (await readdir(packDir('alpha-one'))).find((name) => name.endsWith('.pack'));
-  assert.ok(pack, 'clone contains a base pack');
-  const first = await stat(join(packDir('alpha-one'), pack));
-  const second = await stat(join(packDir('alpha-two'), pack));
-  assert.equal(first.ino, second.ino, 'independent clones share the same pack inode');
-  assert.equal(first.dev, second.dev);
-  assert.ok(first.nlink >= 3, 'mirror and two consumers share the pack');
+  const pool = join(store, 'pool.git');
+  const poolObjects = join(pool, 'objects');
+  assert.deepEqual(await api.gc(), { compacted: true });
+  const poolPacks = (await readdir(join(poolObjects, 'pack'))).filter((name) => name.endsWith('.pack'));
+  assert.ok(poolPacks.length > 0, 'shared pool has pack files');
   for (const name of clones) {
     const remote = name.split('-')[0];
-    assert.equal(git(join(root, name), 'remote', 'get-url', 'origin'), `git://127.0.0.1:${port}/team/${remote}`);
-    assert.equal(git(join(root, name), 'rev-parse', 'HEAD'), git(join(remotes, 'team', remote), 'rev-parse', 'HEAD'));
-    await assert.rejects(access(join(root, name, '.git', 'objects', 'info', 'alternates')));
-    git(join(root, name), 'gc');
+    const consumer = join(root, name);
+    assert.equal((await readFile(join(consumer, '.git', 'objects', 'info', 'alternates'), 'utf8')).trim(), poolObjects);
+    assert.equal(git(consumer, 'remote', 'get-url', 'origin'), `git://127.0.0.1:${port}/team/${remote}`);
+    assert.equal(git(consumer, 'rev-parse', 'HEAD'), git(join(remotes, 'team', remote), 'rev-parse', 'HEAD'));
+    git(consumer, 'gc');
+    git(consumer, 'fsck', '--full');
   }
-  assert.equal((await stat(join(packDir('alpha-one'), pack))).ino, first.ino, 'kept base pack survives consumer gc');
   const info = await api.storeInfo();
-  await rm(store, { recursive: true, force: true });
+  assert.equal(info.remoteCount, 2);
+  assert.deepEqual(await api.gc(), { compacted: true });
   for (const name of clones) {
     git(join(root, name), 'fsck', '--full');
     assert.equal(git(join(root, name), 'rev-list', '--count', 'HEAD'), '3');
-    assert.equal(git(join(root, name), 'status', '--porcelain'), '');
   }
-  assert.equal(await api.run(['clone', `git://127.0.0.1:${port}/team/alpha`, join(root, 'rebuilt')]), 0);
-  git(join(root, 'rebuilt'), 'fsck', '--full');
   console.log(
     JSON.stringify(
       {
         result: 'PASS',
-        repositories: 2,
+        remotes: 2,
         consumers: 3,
-        sharedPackInode: first.ino,
-        linkCountBeforeClear: first.nlink,
-        storeBeforeClear: info,
-        checks: [
-          'concurrent clones',
-          'shared pack inode',
-          'fsck after store deletion',
-          'full history after store deletion',
-          'automatic store rebuild',
-        ],
+        poolPacks: poolPacks.length,
+        store: info,
+        checks: ['concurrent clones', 'one shared alternate path', 'fsck after pool gc', 'full consumer history'],
       },
       null,
       2,

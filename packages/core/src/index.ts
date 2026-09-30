@@ -1,23 +1,10 @@
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { constants } from 'node:fs';
-import {
-  access,
-  copyFile,
-  link,
-  mkdir,
-  readdir,
-  readFile,
-  realpath,
-  rename,
-  rm,
-  stat,
-  writeFile,
-} from 'node:fs/promises';
+import { access, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, constants as osConstants } from 'node:os';
 import { basename, delimiter, dirname, join, resolve, sep } from 'node:path';
-import { createHash } from 'node:crypto';
-import { GitPluginError, simpleGit } from 'simple-git';
+import { createHash, randomUUID } from 'node:crypto';
 
 export interface GitxOptions {
   cwd?: string;
@@ -28,9 +15,7 @@ export interface GitxOptions {
 export interface StorageReport {
   operation: 'clone' | 'cache';
   repository: string;
-  mirrorReused: boolean;
-  sharedPackBytes: number;
-  copiedPackBytes: number;
+  poolReused: boolean;
   estimatedSavedBytes: number;
   /** Logical bytes in private pack files before/after cache adoption. Loose objects are excluded. */
   beforeUniqueBytes?: number;
@@ -39,7 +24,7 @@ export interface StorageReport {
 export interface StoreInfo {
   path: string;
   sizeBytes: number;
-  mirrorCount: number;
+  remoteCount: number;
 }
 export interface DoctorCheck {
   name: string;
@@ -113,19 +98,7 @@ async function directorySize(path: string): Promise<number> {
   return size;
 }
 
-async function findMirrors(path: string): Promise<string[]> {
-  const result: string[] = [];
-  async function walk(directory: string): Promise<void> {
-    for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
-      if (!entry.isDirectory()) continue;
-      const child = join(directory, entry.name);
-      if (entry.name.endsWith('.git') && (await isPresent(join(child, 'HEAD')))) result.push(child);
-      else await walk(child);
-    }
-  }
-  await walk(path);
-  return result;
-}
+const remoteId = (key: string): string => createHash('sha256').update(key).digest('hex');
 
 function unsupportedClone(args: string[]): boolean {
   return args.some((arg) =>
@@ -259,6 +232,7 @@ async function lockDirectory<T>(lock: string, action: () => Promise<T>): Promise
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
       if (attempts > 1200) throw new Error(`Timed out waiting for gitx lock: ${lock}`, { cause: error });
+      if (attempts === 20) process.stderr.write('gitx: waiting for the object pool lock\n');
       const owner = Number((await readFile(join(lock, 'owner'), 'utf8').catch(() => '')).trim());
       const age = Date.now() - (await stat(lock).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs;
       // A dead owner may be reaped. A live but slow Git process must never lose its lock.
@@ -284,44 +258,11 @@ async function initializeStore(root: string): Promise<void> {
   await mkdir(root, { recursive: true });
   const marker = join(root, '.gitx-store');
   if (await isPresent(marker)) {
-    if ((await readFile(marker, 'utf8')) !== 'gitx-store-v1\n') throw new Error(`Invalid gitx store marker: ${root}`);
+    if ((await readFile(marker, 'utf8')) !== 'gitx-store-v2\n') throw new Error(`Invalid gitx store marker: ${root}`);
     return;
   }
   if ((await readdir(root)).length) throw new Error(`Refusing to adopt a nonempty directory as a store: ${root}`);
-  await writeFile(marker, 'gitx-store-v1\n', { flag: 'wx' });
-}
-
-async function markLinkedPacks(mirror: string, consumerGitdir: string): Promise<void> {
-  const source = join(mirror, 'objects', 'pack');
-  const target = join(consumerGitdir, 'objects', 'pack');
-  for (const name of await readdir(target).catch(() => [])) {
-    if (!name.endsWith('.pack')) continue;
-    const a = await stat(join(source, name)).catch(() => undefined);
-    const b = await stat(join(target, name)).catch(() => undefined);
-    if (a && b && a.dev === b.dev && a.ino === b.ino)
-      await writeFile(join(target, name.replace(/\.pack$/, '.keep')), 'gitx base pack\n');
-  }
-}
-
-async function packReport(
-  mirror: string,
-  consumerGitdir: string,
-): Promise<{ sharedPackBytes: number; copiedPackBytes: number }> {
-  const source = join(mirror, 'objects', 'pack');
-  const target = join(consumerGitdir, 'objects', 'pack');
-  let sharedPackBytes = 0;
-  let copiedPackBytes = 0;
-  for (const name of await readdir(source).catch(() => [])) {
-    if (!/\.(pack|idx|rev)$/.test(name)) continue;
-    const [a, b] = await Promise.all([
-      stat(join(source, name)).catch(() => undefined),
-      stat(join(target, name)).catch(() => undefined),
-    ]);
-    if (!a || !b) continue;
-    if (a.dev === b.dev && a.ino === b.ino) sharedPackBytes += b.size;
-    else copiedPackBytes += b.size;
-  }
-  return { sharedPackBytes, copiedPackBytes };
+  await writeFile(marker, 'gitx-store-v2\n', { flag: 'wx' });
 }
 
 async function uniquePackBytes(gitdir: string): Promise<number> {
@@ -334,14 +275,25 @@ async function uniquePackBytes(gitdir: string): Promise<number> {
   return bytes;
 }
 
-async function withLock<T>(root: string, key: string, action: () => Promise<T>): Promise<T> {
-  // Keep the maintenance lock beside the store, so clear cannot delete an active lock.
-  // Serialize mutations in v1, including across keys; consumers remain independent.
+async function withLock<T>(root: string, action: () => Promise<T>): Promise<T> {
+  // One Git object database needs one writer at a time. Keep the lock outside the store.
   return lockDirectory(storeLock(root), async () => {
     await initializeStore(root);
-    const lock = join(root, 'locks', createHash('sha256').update(key).digest('hex') + '.lock');
-    return lockDirectory(lock, action);
+    return action();
   });
+}
+
+function poolPath(root: string): string {
+  return join(root, 'pool.git');
+}
+
+async function setAlternate(gitdir: string, pool: string): Promise<void> {
+  const alternate = join(gitdir, 'objects', 'info', 'alternates');
+  await mkdir(dirname(alternate), { recursive: true });
+  const target = join(pool, 'objects');
+  const existing = await readFile(alternate, 'utf8').catch(() => '');
+  if (existing.split('\n').includes(target)) return;
+  await writeFile(alternate, existing + target + '\n');
 }
 
 export function createGitx(options: GitxOptions = {}) {
@@ -442,64 +394,45 @@ export function createGitx(options: GitxOptions = {}) {
     return canonicalPath(resolve(cwd, expandHome(env.GITX_STORE || '~/.cache/gitx')));
   }
 
-  async function ensureMirror(remote: string, key: string, root: string): Promise<string> {
-    const mirror = join(root, 'mirrors', `${key}.git`);
-    await mkdir(dirname(mirror), { recursive: true });
-    await mkdir(join(root, 'tmp'), { recursive: true });
-    if (!(await isPresent(mirror))) {
-      const staging = join(
-        root,
-        'tmp',
-        createHash('sha256').update(key).digest('hex') + `-${process.pid}-${Date.now()}.git`,
-      );
-      try {
-        const clientEnv = { ...env };
-        delete clientEnv.PAGER;
-        delete clientEnv.GIT_PAGER;
-        const client = simpleGit({
-          baseDir: cwd,
-          binary: await gitPath(),
-          maxConcurrentProcesses: 1,
-          unsafe: { allowUnsafeConfigPaths: true },
-          allowEnvironment: Object.keys(clientEnv),
-        });
-        try {
-          await client.env(clientEnv).clone(remote, staging, ['--bare']);
-        } catch (error) {
-          if (!(error instanceof GitPluginError) || !['unsafe', 'allowEnvironment'].includes(error.plugin ?? ''))
-            throw error;
-          // Library policy can reject ordinary caller settings such as EDITOR or
-          // GIT_SSH_COMMAND before spawning Git. This local Git wrapper already
-          // honors that same environment for every other operation. Run the
-          // mirror clone through our native adapter; keep transport errors intact.
-          await checked(['clone', '--bare', '--', remote, staging]);
-        }
-        if ((await checked(['-C', staging, 'rev-parse', '--show-object-format'])) !== 'sha1')
-          throw new Error('Unsupported Git object format');
-        await rename(staging, mirror);
-      } finally {
-        await rm(staging, { recursive: true, force: true });
-      }
-    } else {
-      if ((await checked(['-C', mirror, 'rev-parse', '--show-object-format'])) !== 'sha1')
-        throw new Error('Unsupported Git object format');
-      await checked(['-C', mirror, 'remote', 'set-url', 'origin', remote]);
-      await checked([
-        '-C',
-        mirror,
-        'fetch',
-        '--prune',
-        'origin',
-        '+refs/heads/*:refs/heads/*',
-        '+refs/tags/*:refs/tags/*',
-      ]);
-      const head = await git(['-C', mirror, 'ls-remote', '--symref', 'origin', 'HEAD']);
-      const branch = head.stdout.match(/^ref: (refs\/heads\/[^\s]+)\s+HEAD/m)?.[1];
-      if (head.code === 0 && branch) await checked(['-C', mirror, 'symbolic-ref', 'HEAD', branch]);
-    }
-    const stamp = join(mirror, '.gitx-last-used');
-    await writeFile(stamp, '');
-    return mirror;
+  async function ensurePool(root: string): Promise<string> {
+    const pool = poolPath(root);
+    if (!(await isPresent(pool))) await checked(['init', '--bare', '--object-format=sha1', pool]);
+    if ((await checked(['-C', pool, 'rev-parse', '--show-object-format'])) !== 'sha1')
+      throw new Error('Unsupported Git object format in shared pool');
+    return pool;
+  }
+
+  async function fetchRemote(root: string, remote: string, key: string): Promise<string> {
+    const pool = await ensurePool(root);
+    const id = remoteId(key);
+    process.stderr.write(`gitx: updating object pool for ${key}\n`);
+    await checked([
+      '-C',
+      pool,
+      'fetch',
+      '--no-tags',
+      remote,
+      `+refs/heads/*:refs/gitx/remotes/${id}/heads/*`,
+      `+refs/tags/*:refs/gitx/remotes/${id}/tags/*`,
+    ]);
+    await mkdir(join(root, 'remotes'), { recursive: true });
+    await writeFile(join(root, 'remotes', `${id}.json`), JSON.stringify({ key, remote }) + '\n');
+    return pool;
+  }
+
+  async function pinConsumer(pool: string, repo: string): Promise<void> {
+    // Immutable snapshots keep old tips reachable after force pushes, branch
+    // deletion, or a later cache call on the same checkout.
+    const id = randomUUID();
+    await checked([
+      '-C',
+      pool,
+      'fetch',
+      '--no-tags',
+      repo,
+      `+refs/*:refs/gitx/consumers/${id}/*`,
+      `HEAD:refs/gitx/consumers/${id}/HEAD`,
+    ]);
   }
 
   async function repoGitdir(path: string): Promise<string> {
@@ -529,38 +462,21 @@ export function createGitx(options: GitxOptions = {}) {
     const destination = resolve(effectiveCwd, parsed.destination ?? defaultCloneName(parsed.remote));
     if (await isPresent(destination)) return undefined;
     const root = await storePath();
-    const cloned = await withLock(root, key, async () => {
-      const mirrorReused = options.onStorageReport ? await isPresent(join(root, 'mirrors', `${key}.git`)) : false;
-      let mirror: string;
+    const cloned = await withLock(root, async () => {
+      const poolReused = options.onStorageReport ? await isPresent(poolPath(root)) : false;
+      let pool: string;
       try {
-        mirror = await ensureMirror(parsed.remote, key, root);
+        pool = await fetchRemote(root, parsed.remote, key);
       } catch {
-        process.stderr.write('gitx: mirror unavailable; using Git clone\n');
+        process.stderr.write('gitx: object pool unavailable; using Git clone\n');
         return undefined;
       }
-      // Git hardlinks packs from a local mirror on the same filesystem and copies otherwise.
-      const cloneArgs = ['clone', ...parsed.forwarded, mirror, destination];
+      const cloneArgs = ['clone', '--reference', pool, ...parsed.forwarded, parsed.remote, destination];
       const result = await git(cloneArgs, effectiveCwd, true);
       if (result.code !== 0) return result.code;
-      try {
-        await checked(['remote', 'set-url', 'origin', parsed.remote], destination);
-        await checked(['fetch', 'origin'], destination);
-        const gitdir = await repoGitdir(destination);
-        await markLinkedPacks(mirror, gitdir);
-        if (options.onStorageReport) {
-          const bytes = await packReport(mirror, gitdir);
-          emitStorageReport({
-            operation: 'clone',
-            repository: destination,
-            mirrorReused,
-            ...bytes,
-            estimatedSavedBytes: bytes.sharedPackBytes,
-          });
-        }
-      } catch (error) {
-        // The clone remains a valid standalone repository even if housekeeping fails.
-        process.stderr.write(`gitx: ${String(error)}\n`);
-      }
+      await pinConsumer(pool, destination);
+      if (options.onStorageReport)
+        emitStorageReport({ operation: 'clone', repository: destination, poolReused, estimatedSavedBytes: 0 });
       return 0;
     });
     if (cloned === 0 && parsed.recurse) return updateSubmodules(['update', '--init', '--recursive'], destination);
@@ -597,14 +513,13 @@ export function createGitx(options: GitxOptions = {}) {
       const gitdir = gitPathResult.stdout.trim();
       if (await isPresent(gitdir)) continue;
       const root = await storePath();
-      await withLock(root, key, async () => {
-        const mirror = await ensureMirror(remote, key, root);
+      await withLock(root, async () => {
+        const pool = await fetchRemote(root, remote, key);
         await mkdir(dirname(gitdir), { recursive: true });
-        await checked(['clone', '--bare', mirror, gitdir]);
-        await checked(['-C', gitdir, 'remote', 'set-url', 'origin', remote]);
+        await checked(['clone', '--bare', '--reference', pool, remote, gitdir]);
         await checked(['--git-dir', gitdir, 'config', 'core.bare', 'false']);
         await checked(['--git-dir', gitdir, 'config', 'core.worktree', target]);
-        await markLinkedPacks(mirror, gitdir);
+        await pinConsumer(pool, gitdir);
       });
     }
   }
@@ -671,7 +586,6 @@ export function createGitx(options: GitxOptions = {}) {
         return;
       }
       const commonGitdir = await repoCommonGitdir(repo);
-      const beforeUniqueBytes = options.onStorageReport ? await uniquePackBytes(commonGitdir) : 0;
       const url = await origin(repo);
       const key = url && (await remoteKey(url, repo));
       if (!key) {
@@ -680,62 +594,32 @@ export function createGitx(options: GitxOptions = {}) {
         return;
       }
       const root = await storePath();
-      await withLock(root, key, async () => {
-        const mirror = join(root, 'mirrors', `${key}.git`);
-        const mirrorReused = options.onStorageReport ? await isPresent(mirror) : false;
-        if (!(await isPresent(mirror))) {
-          // Seed from the local repo; fetching afterwards completes refs absent locally.
-          await mkdir(dirname(mirror), { recursive: true });
-          const staging = join(root, 'tmp', `seed-${process.pid}-${Date.now()}.git`);
-          await mkdir(dirname(staging), { recursive: true });
-          try {
-            await checked(['clone', '--bare', repo, staging]);
-            await checked(['-C', staging, 'remote', 'set-url', 'origin', url]);
-            await rename(staging, mirror);
-          } finally {
-            await rm(staging, { recursive: true, force: true });
-          }
-        }
-        await checked([
-          '-C',
-          mirror,
-          'fetch',
-          '--prune',
-          'origin',
-          '+refs/heads/*:refs/heads/*',
-          '+refs/tags/*:refs/tags/*',
-        ]);
-        await checked(['-C', mirror, '-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d']);
-        await writeFile(join(mirror, '.gitx-last-used'), '');
-        const source = join(mirror, 'objects', 'pack');
-        const target = join(commonGitdir, 'objects', 'pack');
-        await mkdir(target, { recursive: true });
-        for (const name of await readdir(source).catch(() => [])) {
-          if (!/\.(pack|idx|rev)$/.test(name)) continue;
-          const from = join(source, name);
-          const to = join(target, name);
-          const temp = `${to}.gitx-${process.pid}-${Date.now()}`;
-          try {
-            await link(from, temp).catch(() => copyFile(from, temp));
-            await rename(temp, to);
-          } finally {
-            await rm(temp, { force: true });
-          }
-        }
-        // Copying rather than linking is still safe; link where the filesystem permits.
-        await markLinkedPacks(mirror, commonGitdir);
-        await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '--no-pack-kept-objects'], repo);
+      await withLock(root, async () => {
+        const poolReused = await isPresent(poolPath(root));
+        const pool = await ensurePool(root);
+        process.stderr.write(`gitx: caching ${repo}: packing local objects\n`);
+        const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
+        const alreadyLinked = (await readFile(alternate, 'utf8').catch(() => ''))
+          .split('\n')
+          .includes(join(pool, 'objects'));
+        // Gather loose local objects before adding an alternate; afterwards Git may
+        // consider a local object redundant and omit it from a new pack.
+        if (!alreadyLinked) await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
+        const beforeUniqueBytes = await uniquePackBytes(commonGitdir);
+        process.stderr.write(`gitx: caching ${repo}: importing refs\n`);
+        await pinConsumer(pool, repo);
+        await fetchRemote(root, url!, key);
+        process.stderr.write(`gitx: caching ${repo}: sharing objects\n`);
+        await setAlternate(commonGitdir, pool);
+        await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
+        await checked(['fsck', '--connectivity-only', '--no-reflogs'], repo);
         result.cached++;
         if (options.onStorageReport) {
-          const [bytes, afterUniqueBytes] = await Promise.all([
-            packReport(mirror, commonGitdir),
-            uniquePackBytes(commonGitdir),
-          ]);
+          const afterUniqueBytes = await uniquePackBytes(commonGitdir);
           emitStorageReport({
             operation: 'cache',
             repository: repo,
-            mirrorReused,
-            ...bytes,
+            poolReused,
             beforeUniqueBytes,
             afterUniqueBytes,
             estimatedSavedBytes: Math.max(0, beforeUniqueBytes - afterUniqueBytes),
@@ -763,63 +647,47 @@ export function createGitx(options: GitxOptions = {}) {
     return {
       path,
       sizeBytes: await directorySize(path),
-      mirrorCount: (await findMirrors(join(path, 'mirrors'))).length,
+      remoteCount: (await readdir(join(path, 'remotes')).catch(() => [])).filter((name) => name.endsWith('.json'))
+        .length,
     };
   }
 
   async function fetch(): Promise<{ fetched: number }> {
     const root = await storePath();
     let fetched = 0;
-    for (const mirror of await findMirrors(join(root, 'mirrors'))) {
-      const key = mirror.slice(join(root, 'mirrors').length + 1, -4);
-      await withLock(root, key, async () => {
-        await checked([
-          '-C',
-          mirror,
-          'fetch',
-          '--prune',
-          'origin',
-          '+refs/heads/*:refs/heads/*',
-          '+refs/tags/*:refs/tags/*',
-        ]);
-        await checked(['-C', mirror, 'repack', '-d', '--geometric=2']);
+    await withLock(root, async () => {
+      for (const name of await readdir(join(root, 'remotes')).catch(() => [])) {
+        if (!name.endsWith('.json')) continue;
+        const { key, remote } = JSON.parse(await readFile(join(root, 'remotes', name), 'utf8')) as {
+          key: string;
+          remote: string;
+        };
+        await fetchRemote(root, remote, key);
         fetched++;
-      });
-    }
+      }
+      if (fetched) await checked(['-C', poolPath(root), 'repack', '-d', '--geometric=2']);
+    });
     return { fetched };
   }
 
-  async function gc(unused = '30d'): Promise<{ removed: number }> {
-    const match = unused.match(/^(\d+)([dhm])$/);
-    if (!match) throw new Error('Expected age such as 30d, 12h, or 60m');
-    const age = Number(match[1]) * { d: 86400000, h: 3600000, m: 60000 }[match[2] as 'd' | 'h' | 'm'];
+  async function gc(): Promise<{ compacted: boolean }> {
     const root = await storePath();
-    let removed = 0;
-    for (const mirror of await findMirrors(join(root, 'mirrors'))) {
-      const key = mirror.slice(join(root, 'mirrors').length + 1, -4);
-      await withLock(root, key, async () => {
-        const stamp = await stat(join(mirror, '.gitx-last-used')).catch(() => stat(mirror));
-        if (Date.now() - stamp.mtimeMs >= age) {
-          await rm(mirror, { recursive: true, force: true });
-          removed++;
-        }
-      });
-    }
-    return { removed };
+    if (!(await isPresent(poolPath(root)))) return { compacted: false };
+    await withLock(root, async () => {
+      await checked(['-C', poolPath(root), 'gc', '--prune=never']);
+    });
+    return { compacted: true };
   }
 
   async function doctor(): Promise<DoctorResult> {
     const root = await storePath();
-    return withLock(root, 'doctor', async () => {
+    return withLock(root, async () => {
       const checks: DoctorCheck[] = [];
-      const [rootStat, cwdStat] = await Promise.all([stat(root), stat(cwd)]);
+      const pool = await ensurePool(root);
       checks.push({
-        name: 'filesystem',
-        ok: rootStat.dev === cwdStat.dev,
-        detail:
-          rootStat.dev === cwdStat.dev
-            ? 'Store and working directory share a filesystem'
-            : 'Store and working directory use different filesystems',
+        name: 'pool',
+        ok: true,
+        detail: `${pool}: SHA-1 object database`,
       });
       const binary = await gitPath();
       checks.push({ name: 'git', ok: true, detail: `${binary}: ${await checked(['--version'])}` });
@@ -870,7 +738,7 @@ export function createGitx(options: GitxOptions = {}) {
     if (code !== 0 || !path || noCheckout) return code;
     const target = resolve(at, path);
     // Git already shares the superproject object directory between worktrees.
-    // Its submodules have separate gitdirs, so populate those through our mirrors.
+    // Its submodules have separate gitdirs, so populate those through the pool.
     if (await isPresent(join(target, '.gitmodules')))
       return updateSubmodules(['update', '--init', '--recursive'], target);
     return 0;

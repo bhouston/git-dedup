@@ -15,10 +15,10 @@ Requires Node.js 22+ and Git on macOS or Linux.
 ## Clone a repository
 
 ```sh
-# Automatically create or reuse a mirror in ~/.cache/gitx.
+# Automatically create or reuse the object pool in ~/.cache/gitx.
 gitx clone https://github.com/you/project.git project
 
-# Reuse the mirror for another checkout.
+# Borrow from the pool for another checkout.
 gitx clone https://github.com/you/project.git project-review
 cd project-review
 

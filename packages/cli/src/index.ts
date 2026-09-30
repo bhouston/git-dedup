@@ -50,7 +50,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
     )
     .version(packageInfo.version)
     .help()
-    .option('stats', { type: 'boolean', describe: 'Show estimated shared storage savings for clone or cache' })
+    .option('stats', { type: 'boolean', describe: 'Show object pool use and cache storage measurements' })
     .strict()
     .showHelpOnFail(true);
   const commands = await loadCommands();

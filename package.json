@@ -1,7 +1,7 @@
 {
   "name": "gitx-workspace",
   "private": true,
-  "description": "Independent Git checkouts backed by consolidated local storage",
+  "description": "Git checkouts backed by a shared object pool",
   "license": "MIT",
   "repository": "github:bhouston/gitx",
   "type": "module",

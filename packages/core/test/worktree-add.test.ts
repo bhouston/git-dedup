@@ -1,12 +1,12 @@
 import { it, expect } from 'vitest';
 import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, readFile, readdir, stat, rm, access } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, access } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createGitx } from '../src/index.js';
 
-it('intercepts worktree add and initializes independent mirror-backed submodules', async () => {
+it('intercepts worktree add and initializes pool-backed submodules', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gitx-worktree-'));
   const env = {
     ...process.env,
@@ -78,19 +78,15 @@ it('intercepts worktree add and initializes independent mirror-backed submodules
     expect(await readFile(join(module, 'README'), 'utf8')).toBe('library\n');
     const moduleGitdir = git(module, 'rev-parse', '--absolute-git-dir');
     expect(moduleGitdir).toContain('/worktrees/worker/modules/deps/library');
-    const packs = join(moduleGitdir, 'objects', 'pack');
-    const pack = (await readdir(packs)).find((name) => name.endsWith('.pack'))!;
-    const mirrorPacks = join(env.GITX_STORE, 'mirrors', `127.0.0.1_${port}`, 'team', 'library.git', 'objects', 'pack');
-    expect((await stat(join(packs, pack))).ino).toBe((await stat(join(mirrorPacks, pack))).ino);
-    await access(join(packs, pack.replace('.pack', '.keep')));
-    await expect(access(join(moduleGitdir, 'objects', 'info', 'alternates'))).rejects.toThrow();
+    expect((await readFile(join(moduleGitdir, 'objects', 'info', 'alternates'), 'utf8')).trim()).toBe(
+      join(await realpath(env.GITX_STORE), 'pool.git', 'objects'),
+    );
     // Native no-checkout semantics must survive interception.
     const emptyWorker = join(root, 'empty-worker');
     expect(await api.run(['-C', consumer, 'worktree', 'add', '--detach', '--no-checkout', emptyWorker, 'HEAD'])).toBe(
       0,
     );
     await expect(access(join(emptyWorker, '.gitmodules'))).rejects.toThrow();
-    await rm(env.GITX_STORE, { recursive: true, force: true });
     git(consumer, 'fsck', '--full');
     git(worker, 'fsck', '--full');
     git(module, 'fsck', '--full');

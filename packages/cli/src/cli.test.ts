@@ -137,13 +137,13 @@ describe('gitx CLI', () => {
     expect(result).not.toHaveStdout('## gitx store set');
   });
 
-  it('fetches store mirrors and rejects the removed refresh command', async () => {
+  it('fetches registered remotes and rejects the removed refresh command', async () => {
     const { dir, remote } = await gitRemoteFixture();
     const options = { cwd: dir, env: isolatedEnv(dir) };
     expect(await cli.run(['clone', remote, 'consumer'], options)).toSucceed();
     const result = await cli.run(['store', 'fetch'], options);
     expect(result).toSucceed();
-    expect(result).toHaveStdout('Fetched 1 mirror(s).');
+    expect(result).toHaveStdout('Fetched 1 remote(s).');
     expect(await cli.run(['store', 'refresh'], options)).toFail();
   });
 
@@ -161,7 +161,7 @@ describe('gitx CLI', () => {
     const result = await cli.run(['store'], { env: isolatedEnv(dir) });
     expect(result).toSucceed();
     expect(result).toHaveStdout(join(dir, 'store'));
-    expect(result).toHaveStdout('Mirrors: 0');
+    expect(result).toHaveStdout('Remotes: 0');
   });
 
   it('preserves raw Git options during passthrough', async () => {
@@ -190,16 +190,16 @@ describe('gitx CLI', () => {
     const options = { cwd: dir, env: isolatedEnv(dir), timeout: 10_000 };
     const first = await cli.run(['--stats', 'clone', remote, 'first'], options);
     expect(first).toSucceed();
-    expect(first).toHaveStderr(/created mirror/);
-    expect(first).toHaveStderr(/estimated duplicate pack bytes avoided .* bytes/);
+    expect(first).toHaveStderr(/created object pool/);
+    expect(first).toHaveStderr(/objects borrowed through Git alternates/);
 
     const second = await cli.run(['--stats', 'clone', remote, 'second'], options);
     expect(second).toSucceed();
-    expect(second).toHaveStderr(/reused mirror/);
+    expect(second).toHaveStderr(/reused object pool/);
 
     const plain = await cli.run(['clone', remote, 'plain'], options);
     expect(plain).toSucceed();
-    expect(plain.stderr).not.toContain('estimated duplicate pack bytes avoided');
+    expect(plain.stderr).not.toContain('objects borrowed through Git alternates');
 
     const native = await commandLine({ command: ['git'], name: 'git' }).run(['clone', remote, 'adopt'], options);
     expect(native).toSucceed();
