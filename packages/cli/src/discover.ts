@@ -1,24 +1,36 @@
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { readdir, realpath, stat } from 'node:fs/promises';
 import { promisify } from 'node:util';
 import { isAbsolute, join, resolve, sep } from 'node:path';
 
 const execFileAsync = promisify(execFile);
-const ignored = new Set([
-  '.git',
-  '.hg',
-  '.svn',
-  '.next',
-  '.nuxt',
-  '.turbo',
-  '.venv',
-  'build',
-  'coverage',
-  'dist',
-  'node_modules',
-  'target',
-  'vendor',
-]);
+
+async function isInsideWorktree(path: string): Promise<boolean> {
+  try {
+    const { stdout } = await execFileAsync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree']);
+    return stdout.trim() === 'true';
+  } catch {
+    return false;
+  }
+}
+
+async function ignoredDirectories(path: string, names: string[]): Promise<Set<string>> {
+  if (!names.length) return new Set();
+  const output = await new Promise<string>((done, reject) => {
+    const child = spawn('git', ['-C', path, 'check-ignore', '--no-index', '-z', '--stdin']);
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+    child.once('error', reject);
+    child.once('close', (code) => {
+      if (code === 0 || code === 1) done(Buffer.concat(stdout).toString());
+      else reject(new Error(`git check-ignore failed: ${Buffer.concat(stderr).toString().trim()}`));
+    });
+    child.stdin.end(names.join('\0') + '\0');
+  });
+  return new Set(output.split('\0').filter(Boolean));
+}
 
 export interface DiscoveredCheckout {
   path: string;
@@ -28,19 +40,28 @@ export interface DiscoveredCheckout {
   coveredBy?: string;
 }
 
-/** Discover checkout roots without following symlinks or entering Git/object/build directories. */
+/** Discover checkout roots without following symlinks or entering ignored directories or Git metadata. */
 export async function discoverCheckouts(directory: string): Promise<DiscoveredCheckout[]> {
   const root = resolve(directory);
   if (!(await stat(root)).isDirectory()) throw new Error(`Not a directory: ${root}`);
   const candidates: string[] = [];
-  const pending = [root];
+  const pending = [{ path: root, insideWorktree: await isInsideWorktree(root) }];
   while (pending.length) {
-    const current = pending.pop()!;
+    const { path: current, insideWorktree } = pending.pop()!;
     const entries = await readdir(current, { withFileTypes: true });
-    if (entries.some((entry) => entry.name === '.git' && (entry.isFile() || entry.isDirectory())))
-      candidates.push(current);
-    for (const entry of entries) {
-      if (entry.isDirectory() && !ignored.has(entry.name)) pending.push(join(current, entry.name));
+    const hasGit = entries.some((entry) => entry.name === '.git' && (entry.isFile() || entry.isDirectory()));
+    if (hasGit) candidates.push(current);
+    const directories = entries.filter((entry) => entry.isDirectory() && entry.name !== '.git');
+    const excluded =
+      insideWorktree || hasGit
+        ? await ignoredDirectories(
+            current,
+            directories.map((entry) => entry.name),
+          )
+        : new Set<string>();
+    for (const entry of directories) {
+      if (!excluded.has(entry.name))
+        pending.push({ path: join(current, entry.name), insideWorktree: insideWorktree || hasGit });
     }
   }
 

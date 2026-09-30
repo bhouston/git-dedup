@@ -52,4 +52,6 @@ git-dedup store
 git-dedup store list
 ```
 
+The `--all` sweep follows each checkout's Git ignore rules. It skips `.git` metadata and symlinks. A directory outside a Git worktree has no repository ignore rules, so all of its directory names are eligible for discovery.
+
 See the [CLI reference](/docs/cli) for commands or [agent setup](./agents.md) for coding agents.
