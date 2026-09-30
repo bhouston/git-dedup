@@ -6,5 +6,11 @@ export default defineConfig({
     exclude: ['**/node_modules/**', '**/dist/**'],
     testTimeout: 60000,
     hookTimeout: 60000,
+    coverage: {
+      provider: 'v8',
+      reporter: ['text', 'lcov'],
+      include: ['packages/{core,cli}/src/**/*.ts'],
+      exclude: ['**/*.{test,spec}.ts', '**/*.d.ts'],
+    },
   },
 });
