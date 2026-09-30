@@ -32,4 +32,6 @@ The integrated terminal and command-line agents still call `git` from your `PATH
 
 If you install Node.js through a version manager such as nvm, the git-dedup path changes when you switch Node versions. Update `git.path` after switching. Remove the setting to go back to plain Git.
 
+Dev containers and remote workspaces need the store mounted at the same path; see [containers, sandboxes, and other machines](./safety.md#containers-sandboxes-and-other-machines).
+
 Visual Studio (the Windows IDE) is not supported, because git-dedup runs only on macOS and Linux.
