@@ -615,6 +615,20 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         const pool = await fetchRemote(root, remote, key);
         await mkdir(dirname(gitdir), { recursive: true });
         await checked(['clone', '--bare', '--reference', pool, remote, gitdir]);
+        // Match a native submodule clone: remote-tracking refs, origin/HEAD, and only the default local branch.
+        await checked(['--git-dir', gitdir, 'config', 'remote.origin.fetch', '+refs/heads/*:refs/remotes/origin/*']);
+        await checked(['--git-dir', gitdir, 'fetch', '--quiet', 'origin']);
+        const head = await git(['--git-dir', gitdir, 'symbolic-ref', '--short', '-q', 'HEAD']);
+        const branch = head.code === 0 ? head.stdout.trim() : undefined;
+        if (branch) {
+          await checked(['--git-dir', gitdir, 'remote', 'set-head', 'origin', branch]);
+          await checked(['--git-dir', gitdir, 'config', `branch.${branch}.remote`, 'origin']);
+          await checked(['--git-dir', gitdir, 'config', `branch.${branch}.merge`, `refs/heads/${branch}`]);
+        }
+        const others = (await checked(['--git-dir', gitdir, 'for-each-ref', '--format=%(refname:short)', 'refs/heads']))
+          .split('\n')
+          .filter((ref) => ref && ref !== branch);
+        if (others.length > 0) await checked(['--git-dir', gitdir, 'branch', '-D', ...others]);
         await checked(['--git-dir', gitdir, 'config', 'core.bare', 'false']);
         await checked(['--git-dir', gitdir, 'config', 'core.worktree', target]);
         await pinConsumer(pool, gitdir, gitdir, await consumerTips(gitdir));
