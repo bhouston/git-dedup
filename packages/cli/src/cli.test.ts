@@ -129,6 +129,7 @@ describe('git-dedup CLI', () => {
     expect(doc.commands).toHaveProperty('git-dedup store list');
     expect(doc.commands).not.toHaveProperty('git-dedup store refresh');
     expect(doc.commands).toHaveProperty('git-dedup store gc');
+    expect(doc.commands).toHaveProperty('git-dedup store remove');
     expect(doc.commands).not.toHaveProperty('git-dedup store clear');
     expect(doc.commands).not.toHaveProperty('git-dedup store set');
   });
@@ -155,6 +156,18 @@ describe('git-dedup CLI', () => {
     expect(failed).toFail();
     expect(failed).toHaveStdout('Fetched 0 remote(s); 1 failed.');
     expect(await cli.run(['store', 'refresh'], options)).toFail();
+  });
+
+  it('removes a clone from the store and then reports a no-op', async () => {
+    const { dir, remote } = await gitRemoteFixture();
+    const options = { cwd: dir, env: isolatedEnv(dir) };
+    expect(await cli.run(['clone', remote, 'consumer'], options)).toSucceed();
+    const removed = await cli.run(['store', 'remove', 'consumer'], options);
+    expect(removed).toSucceed();
+    expect(removed).toHaveStdout(/Removed .*consumer: objects now use \d/);
+    const again = await cli.run(['store', 'remove', 'consumer'], options);
+    expect(again).toSucceed();
+    expect(again).toHaveStdout('Nothing to remove: consumer is not linked to the store.');
   });
 
   it.each([['clear'], ['set', 'new-store']])('rejects removed store command %s', async (...args) => {

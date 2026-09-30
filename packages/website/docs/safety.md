@@ -23,3 +23,9 @@ The alternates path is absolute. A linked checkout breaks wherever that path is 
 - A copy of the checkout on another machine, made with `rsync`, an archive, or a synced folder.
 
 Git then reports missing objects. Mount the store at the same absolute path, or grant read access to it. To move or copy a checkout elsewhere, first detach it with `git-dedup store remove <path>`, which copies the objects it needs back into the checkout.
+
+## Stop using git-dedup
+
+`git-dedup store remove <path>` is the way to stop using git-dedup for a checkout. Under the store lock, it copies every object the checkout needs from the pool into the checkout's own object directory. It then removes the pool line from `objects/info/alternates` and keeps any other alternates. It verifies the result with `git fsck --connectivity-only` and restores the alternate if verification fails. It then deletes the checkout's git-dedup metadata and its consumer refs in the pool.
+
+Linked worktrees share the main repository's object directory, so removing one worktree detaches all of them. Initialized submodules are detached too. A checkout that is not linked is left unchanged, and the command exits successfully. The output reports the bytes each detached object directory now uses. After you remove every linked checkout, you can delete the store.
