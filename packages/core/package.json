@@ -1,7 +1,7 @@
 {
   "name": "git-dedup-core",
   "version": "0.1.0",
-  "description": "Consolidated Git storage with a shared object pool",
+  "description": "Shared Git object pool for coding agents, clones, and forks: the git-dedup core library",
   "keywords": [
     "alternates",
     "clone",

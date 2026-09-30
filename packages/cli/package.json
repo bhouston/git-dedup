@@ -1,7 +1,7 @@
 {
   "name": "git-dedup",
   "version": "0.1.0",
-  "description": "A Git wrapper that shares repository object storage",
+  "description": "Many coding agents, one copy of Git history: a Git wrapper whose clones share one local object pool",
   "keywords": [
     "cli",
     "clone",
