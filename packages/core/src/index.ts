@@ -409,18 +409,24 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return (cachedGit = candidate);
   }
 
-  async function git(args: string[], at = cwd, inherit = false): Promise<GitResult> {
+  // 'tee' captures output like the default and also streams stderr (Git progress) to the user.
+  async function git(args: string[], at = cwd, inherit: boolean | 'tee' = false): Promise<GitResult> {
     const binary = await gitPath();
     return new Promise((resolveResult, reject) => {
-      const child = spawn(binary, args, { cwd: at, env, stdio: inherit ? 'inherit' : ['ignore', 'pipe', 'pipe'] });
+      const child = spawn(binary, args, {
+        cwd: at,
+        env,
+        stdio: inherit === true ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+      });
       let stdout = '';
       let stderr = '';
-      if (!inherit) {
+      if (inherit !== true) {
         child.stdout?.on('data', (b) => {
           stdout += b;
         });
         child.stderr?.on('data', (b) => {
           stderr += b;
+          if (inherit === 'tee') process.stderr.write(b);
         });
       }
       const signals = ['SIGINT', 'SIGTERM', 'SIGHUP'] as const;
@@ -428,9 +434,9 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         child.kill(signal);
       });
       const cleanup = () => {
-        if (inherit) signals.forEach((signal, i) => process.removeListener(signal, handlers[i]!));
+        if (inherit === true) signals.forEach((signal, i) => process.removeListener(signal, handlers[i]!));
       };
-      if (inherit) signals.forEach((signal, i) => process.on(signal, handlers[i]!));
+      if (inherit === true) signals.forEach((signal, i) => process.on(signal, handlers[i]!));
       child.on('error', (error) => {
         cleanup();
         reject(error);
@@ -442,12 +448,12 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     });
   }
 
-  async function checked(args: string[], at = cwd): Promise<string> {
+  async function checked(args: string[], at = cwd, progress = false): Promise<string> {
     if (hasRepositoryEnvironment)
       throw new Error(
         'Unset Git repository override environment variables before running git-dedup storage operations',
       );
-    const result = await git(args, at);
+    const result = await git(args, at, progress && 'tee');
     if (result.code !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim()}`);
     return result.stdout.trim();
   }
@@ -477,25 +483,30 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return pool;
   }
 
-  async function fetchRemote(root: string, remote: string, key: string): Promise<string> {
+  async function fetchRemote(root: string, remote: string, key: string, progress = false): Promise<string> {
     const pool = await ensurePool(root);
-    await fetchRemoteObjects(pool, remote, key);
+    await fetchRemoteObjects(pool, remote, key, progress);
     await registerRemote(root, remote, key);
     return pool;
   }
 
-  async function fetchRemoteObjects(pool: string, remote: string, key: string): Promise<void> {
+  async function fetchRemoteObjects(pool: string, remote: string, key: string, progress = false): Promise<void> {
     const id = remoteId(key);
     process.stderr.write(`git-dedup: updating object pool for ${key}\n`);
-    await checked([
-      '-C',
-      pool,
-      'fetch',
-      '--no-tags',
-      remote,
-      `+refs/heads/*:refs/gitx/remotes/${id}/heads/*`,
-      `+refs/tags/*:refs/gitx/remotes/${id}/tags/*`,
-    ]);
+    await checked(
+      [
+        '-C',
+        pool,
+        'fetch',
+        '--no-tags',
+        ...(progress ? ['--progress'] : []),
+        remote,
+        `+refs/heads/*:refs/gitx/remotes/${id}/heads/*`,
+        `+refs/tags/*:refs/gitx/remotes/${id}/tags/*`,
+      ],
+      cwd,
+      progress,
+    );
   }
 
   async function consumerTips(repo: string): Promise<string[]> {
@@ -564,7 +575,10 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       const poolReused = options.onStorageReport ? await isPresent(poolPath(root)) : false;
       let pool: string;
       try {
-        pool = await fetchRemote(root, parsed.remote, key);
+        // Like git clone: progress on a terminal or with --progress, never with -q/--quiet.
+        const quiet = parsed.forwarded.some((arg) => arg === '-q' || arg === '--quiet');
+        const progress = !quiet && (process.stderr.isTTY || parsed.forwarded.includes('--progress'));
+        pool = await fetchRemote(root, parsed.remote, key, progress);
       } catch {
         process.stderr.write('git-dedup: object pool unavailable; using Git clone\n');
         return undefined;

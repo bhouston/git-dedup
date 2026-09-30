@@ -460,6 +460,25 @@ it('reports pool reuse for accelerated clones', async () => {
   expect(reports.map((report) => report.operation)).toEqual(['clone', 'clone']);
 });
 
+it('streams pool fetch progress to stderr unless the clone is quiet', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const output = vi.spyOn(process.stderr, 'write');
+  const written = () => output.mock.calls.map(([message]) => String(message)).join('');
+  try {
+    expect(await api.run(['clone', '--progress', remote, 'loud'])).toBe(0);
+    expect(written()).toContain('Counting objects');
+    output.mockClear();
+    git(['commit', '--allow-empty', '-m', 'second'], join(root, 'source'));
+    git(['push', 'origin', 'main'], join(root, 'source'));
+    expect(await api.run(['clone', '-q', remote, 'quiet'])).toBe(0);
+    expect(written()).toContain('updating object pool');
+    expect(written()).not.toContain('Counting objects');
+  } finally {
+    output.mockRestore();
+  }
+});
+
 it('reports the reduction in consumer-private pack bytes during checkout adoption', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
