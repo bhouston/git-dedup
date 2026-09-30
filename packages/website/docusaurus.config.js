@@ -2,7 +2,7 @@ const clidocPlugin = require('@clidoc/docusaurus');
 
 module.exports = {
   title: 'git-dedup',
-  tagline: 'Shared Git object storage for lean checkouts.',
+  tagline: 'Many coding agents, one copy of Git history.',
   favicon: 'img/git-dedup-mark.svg',
   url: process.env.SITE_URL ?? 'https://git-dedup.ben3d.ca',
   baseUrl: process.env.BASE_URL ?? '/',

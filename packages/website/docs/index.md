@@ -4,6 +4,8 @@ title: Get started
 slug: /
 ---
 
+**Many coding agents, one copy of Git history.** git-dedup is a Git wrapper whose clones, forks, and worktree submodules share one local object pool. Agents and editors can create a fresh checkout per task without storing the history again. In one typical setup of 117 checkouts, Git objects take 11.1 GB instead of an estimated 35.5 GB (69% less).
+
 Install git-dedup with npm:
 
 ```sh
@@ -11,8 +13,6 @@ npm install -g git-dedup
 ```
 
 Requires Node.js 22+ and Git on macOS or Linux.
-
-If you used the previous `gitx` CLI, update scripts and editor settings to call `git-dedup`. Existing stores and linked checkouts continue to work; git-dedup finds an existing store automatically.
 
 ## Clone a repository
 

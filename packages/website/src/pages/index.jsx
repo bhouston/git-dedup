@@ -24,20 +24,21 @@ const cards = [
 export default function Home() {
   return (
     <Layout
-      title="Git storage for agentic workflows"
-      description="Optimized for short-lived repositories in agentic workflows. Automatically reuse Git objects across repeated checkouts and worktrees with submodules."
+      title="Many coding agents, one copy of Git history"
+      description="A Git wrapper whose clones, forks, and worktree submodules share one local object pool."
     >
       <header className={styles.hero}>
         <div className={styles.heroInner}>
           <div className={styles.copy}>
             <h1>
-              Clone freely.
+              Many coding agents.
               <br />
-              <em>Store once.</em>
+              <em>One copy of Git history.</em>
             </h1>
             <p className={styles.lead}>
-              git-dedup collects Git objects from many remotes in one local pool. Supported checkouts borrow them
-              through Git alternates, reducing duplicate storage across clones and forks.
+              Agents and editors clone the same repositories for every task. git-dedup is a Git wrapper whose clones,
+              forks, and worktree submodules share one local object pool, so each new checkout reuses the history
+              already on disk.
             </p>
             <pre className={styles.example}>
               <code>{`# Populate the object pool in ~/.git-dedup.

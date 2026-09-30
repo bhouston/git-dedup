@@ -4,14 +4,14 @@
 [![npm downloads](https://img.shields.io/npm/dm/git-dedup-core.svg)](https://www.npmjs.com/package/git-dedup-core)
 [![CI](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-git-dedup-blue)](https://git-dedup.ben3d.ca/)
+[![Documentation](https://img.shields.io/badge/docs-git--dedup-blue)](https://git-dedup.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-_The TypeScript storage engine behind [git-dedup](https://www.npmjs.com/package/git-dedup)._
+**Many coding agents, one copy of Git history.** _The TypeScript storage engine behind [git-dedup](https://www.npmjs.com/package/git-dedup)._
 
-Build Node.js tools that share one Git object pool across checkouts. The core owns cloning, submodule and worktree integration, repository consolidation, and store maintenance. It invokes native Git; the CLI handles command parsing and presentation.
+Build agent runners, editors, and other Node.js tools that create many checkouts without storing the same Git history many times. Clones, forks, and worktree submodules share one local object pool and borrow from it through Git alternates. The pool holds objects from different remotes, including forks and unrelated repositories.
 
-Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules. The pool holds objects from different remotes, including forks and unrelated repositories. Checkouts borrow from it through Git alternates.
+The core owns cloning, submodule and worktree integration, repository consolidation, and store maintenance. It invokes native Git; the CLI handles command parsing and presentation.
 
 In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
 
@@ -94,9 +94,7 @@ const dedup = createGitDedup({
 await dedup.add('./git-dedup-checkout');
 ```
 
-The callback enables metadata scans after optimized clones and checkout adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for checkout adoption. The package exports `GitDedupOptions`, `StorageReport`, `StoreInfo`, `StoreAddResult`, `DoctorCheck`, and `DoctorResult` types.
-
-Adoption estimates count the reduction in private pack bytes. Counts cover `.pack`, `.idx`, and `.rev` files, excluding loose objects. They measure logical file sizes, not physical disk blocks reclaimed. Clone reports do not estimate savings.
+The callback enables metadata scans after optimized clones and checkout adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for checkout adoption. The package exports `GitDedupOptions`, `StorageReport`, `StoreInfo`, `StoreAddResult`, `DoctorCheck`, and `DoctorResult` types. See [storage reports](https://git-dedup.ben3d.ca/docs/how-it-works#storage-reports) for what the estimates measure.
 
 ## Configuration
 
