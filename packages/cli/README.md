@@ -71,7 +71,7 @@ Other Git commands and unsupported clone forms pass through to Git. Local path c
 
 `store add` accepts a local checkout path, not a remote URL. The checkout can then depend on the shared store for Git objects. `store fetch` refreshes registered remotes.
 
-`store add --all` scans checkout directories below the given path without following symlinks. It skips Git metadata and common dependency/build directories (`node_modules`, `vendor`, `dist`, `build`, `target`, `.next`, `.nuxt`, `.turbo`, `.venv`, and `coverage`). It does not initialize absent submodules. Linked worktrees sharing one Git object database are processed once. Each checkout's outcome appears separately, and a failed checkout does not stop the remaining targets.
+`store add --all` scans checkout directories below the given path without following symlinks. Within a Git worktree, it follows applicable Git ignore rules and skips `.git` metadata. Outside a Git worktree, it scans all directory names until it finds a checkout. It does not initialize absent submodules. Linked worktrees sharing one Git object database are processed once. Each checkout's outcome appears separately, and a failed checkout does not stop the remaining targets.
 
 ### Store commands
 
