@@ -29,6 +29,10 @@
     "README.md",
     "LICENSE"
   ],
+  "os": [
+    "darwin",
+    "linux"
+  ],
   "type": "module",
   "exports": {
     ".": {
