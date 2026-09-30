@@ -49,6 +49,7 @@
     "@clidoc/core": "^0.1.0",
     "@clidoc/yargs": "^1.1.0",
     "git-dedup-core": "workspace:*",
+    "humanize-units": "^2.0.4",
     "yargs": "^18.0.0",
     "yargs-file-commands": "^2.1.0"
   },

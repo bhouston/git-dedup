@@ -1,16 +1,6 @@
 import type { StorageReport } from 'git-dedup-core';
 
-function bytes(value: number): string {
-  if (value < 1024) return `${value} B`;
-  const units = ['KiB', 'MiB', 'GiB', 'TiB'];
-  let scaled = value;
-  let unit = -1;
-  do {
-    scaled /= 1024;
-    unit++;
-  } while (scaled >= 1024 && unit < units.length - 1);
-  return `${scaled.toFixed(1)} ${units[unit]}`;
-}
+import { humanizeBytes as bytes } from 'humanize-units';
 
 /** Report logical pack bytes; no filesystem allocation estimate is available. */
 export function printStorageReports(reports: StorageReport[]): void {
@@ -30,7 +20,7 @@ export function printStorageReports(reports: StorageReport[]): void {
     const total = reports.reduce((sum, report) => sum + report.estimatedSavedBytes, 0);
     if (reports[0]?.operation === 'add') {
       process.stderr.write(
-        `git-dedup: estimated private pack reduction ${bytes(total)} (${total.toLocaleString('en-US')} bytes); ` +
+        `git-dedup: estimated private pack reduction ${bytes(total)}; ` +
           'logical pack bytes only; actual disk reclaimed may differ.\n',
       );
     } else {

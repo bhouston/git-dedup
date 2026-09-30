@@ -168,7 +168,7 @@ describe('git-dedup CLI', () => {
     expect(result).toFail();
     expect(result).toHaveStdout(join(dir, 'store'));
     expect(result).toHaveStdout('Remotes: 0');
-    expect(result).toHaveStdout('Size: 0 bytes');
+    expect(result).toHaveStdout('Size: 0B');
     expect(result).toHaveStdout(/WARN pool: .*object pool is missing/);
     expect(result).toHaveStdout(/OK git: .*git version/);
     await expect(access(join(dir, 'store'))).rejects.toThrow();
@@ -250,7 +250,7 @@ describe('git-dedup CLI', () => {
     expect(adoption).toSucceed();
     expect(adoption).toHaveStdout(/Added 1 repository/);
     expect(adoption).toHaveStderr(/private packs .* -> .*/);
-    expect(adoption).toHaveStderr(/estimated private pack reduction .* bytes/);
+    expect(adoption).toHaveStderr(/estimated private pack reduction [\d.]+[kMGT]?B; logical pack bytes only/);
   });
 
   it('previews and adds discovered checkouts, including nested repositories and submodules', async () => {
