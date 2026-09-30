@@ -48,9 +48,9 @@
   "dependencies": {
     "@bhouston/gitx-core": "workspace:*",
     "@clidoc/core": "^0.1.0",
-    "@clidoc/yargs": "^0.1.0",
+    "@clidoc/yargs": "^1.1.0",
     "yargs": "^18.0.0",
-    "yargs-file-commands": "^2.0.1"
+    "yargs-file-commands": "^2.1.0"
   },
   "devDependencies": {
     "@types/node": "^24.0.0",
