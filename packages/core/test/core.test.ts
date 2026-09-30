@@ -225,6 +225,40 @@ it('adopts local objects while origin is unavailable and refreshes them later', 
   git(['fsck', '--full'], consumer);
 });
 
+it('returns a reason for an invalid path and a checkout without origin', async () => {
+  const { root, store } = await fixture();
+  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  const missing = join(root, 'missing');
+  expect(await api.cache(missing)).toMatchObject({
+    cached: 0,
+    skipped: 1,
+    failed: 0,
+    repositories: [{ path: missing, status: 'skipped', reason: 'not a Git repository or path is unavailable' }],
+  });
+  const local = join(root, 'local');
+  git(['init', local], root);
+  expect(await api.cache(local)).toMatchObject({
+    cached: 0,
+    skipped: 1,
+    failed: 0,
+    repositories: [{ path: local, status: 'skipped', reason: 'no origin remote' }],
+  });
+});
+
+it('reports a storage failure without hiding its Git diagnostic', async () => {
+  const { root, remote } = await fixture();
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  const result = await createGitx({ cwd: root, env: testEnv(root, join(root, 'source')) }).cache(consumer);
+  expect(result).toMatchObject({
+    cached: 0,
+    skipped: 0,
+    failed: 1,
+    repositories: [{ path: consumer, status: 'failed', reason: 'Git storage operation failed' }],
+  });
+  expect(result.repositories[0]?.detail).toContain('Refusing to adopt a nonempty directory');
+});
+
 it('removes only legacy gitx pack keeps during cache migration', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
@@ -443,6 +477,12 @@ it('resolves relative submodule URLs against the parent remote', async () => {
   const vscodeModule = join(root, 'parent-vscode', 'deps/project');
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], vscodeModule));
   expect((await api.cache(join(root, 'parent'))).cached).toBe(2);
+  git(['remote', 'remove', 'origin'], module);
+  const recursive = await api.cache(join(root, 'parent'));
+  expect(recursive).toMatchObject({ cached: 1, skipped: 1, failed: 0 });
+  expect(recursive.repositories).toContainEqual(
+    expect.objectContaining({ path: module, status: 'skipped', reason: 'no origin remote' }),
+  );
   git(['fsck', '--full'], join(root, 'parent'));
   git(['fsck', '--full'], module);
 });

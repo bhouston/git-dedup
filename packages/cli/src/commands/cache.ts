@@ -1,5 +1,5 @@
 import type { ArgumentsCamelCase, Argv } from 'yargs';
-import type { StorageReport } from '@bhouston/gitx-core';
+import type { CacheResult, StorageReport } from '@bhouston/gitx-core';
 import { gitx } from '../context.js';
 import { printStorageReports } from '../stats.js';
 import { discoverCheckouts } from '../discover.js';
@@ -26,9 +26,24 @@ export const builder = (parser: Argv) =>
       type: 'boolean',
       default: false,
       describe: 'Preview checkouts discovered by --all without caching',
+    })
+    .option('verbose', {
+      type: 'boolean',
+      default: false,
+      describe: 'Show full Git errors for skipped and failed repositories',
     });
+
+function reportRepositories(result: CacheResult, verbose: boolean): void {
+  for (const repository of result.repositories) {
+    if (!repository.reason) continue;
+    const label = repository.status === 'cached' ? 'Warning' : repository.status === 'failed' ? 'Failed' : 'Skipped';
+    console.error(`${label} ${repository.path}: ${repository.reason}`);
+    if (verbose && repository.detail) console.error(repository.detail);
+  }
+}
+
 export const handler = async (
-  args: ArgumentsCamelCase<{ path?: string; stats: boolean; all: boolean; dryRun: boolean }>,
+  args: ArgumentsCamelCase<{ path?: string; stats: boolean; all: boolean; dryRun: boolean; verbose: boolean }>,
 ) => {
   if (args.dryRun && !args.all) throw new Error('--dry-run requires --all');
   const reports: StorageReport[] = [];
@@ -52,11 +67,17 @@ export const handler = async (
         const result = await client.cache(target.path);
         cached += result.cached;
         skipped += result.skipped;
+        failed += result.failed;
+        reportRepositories(result, args.verbose);
         completed.add(target.path);
-        console.log(`Finished ${target.path}: cached ${result.cached}, skipped ${result.skipped}`);
+        console.log(
+          `Finished ${target.path}: cached ${result.cached}, skipped ${result.skipped}, failed ${result.failed}`,
+        );
       } catch (error) {
         failed++;
-        console.error(`Failed ${target.path}: ${error instanceof Error ? error.message : String(error)}`);
+        const detail = error instanceof Error ? error.message : String(error);
+        console.error(`Failed ${target.path}: cache operation failed`);
+        if (args.verbose) console.error(detail);
       }
     }
     console.log(`Cached ${cached} repository(s); skipped ${skipped}; failed ${failed}.`);
@@ -65,6 +86,8 @@ export const handler = async (
     return;
   }
   const result = await client.cache(args.path);
-  console.log(`Cached ${result.cached} repository(s); skipped ${result.skipped}.`);
+  reportRepositories(result, args.verbose);
+  console.log(`Cached ${result.cached} repository(s); skipped ${result.skipped}; failed ${result.failed}.`);
   if (args.stats) printStorageReports(reports);
+  if (result.failed) process.exitCode = 1;
 };
