@@ -78,7 +78,7 @@ git-dedup worktree add -b review ../project-review
 
 Supported submodule updates prepare missing module repositories from the pool before Git checks them out. `worktree add` shares the main repository's common object database and initializes supported submodules in the new worktree. With `--no-checkout`, initialization waits for a later submodule update. `submodule add` uses Git, then adds the module to the shared store.
 
-Unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, use ordinary Git behavior. See the [CLI reference](https://git-dedup.ben3d.ca/docs/cli) for the supported paths.
+Unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, use ordinary Git behavior. git-dedup then prints one `git-dedup: <reason>; using plain Git` line on stderr unless you pass `-q` or `--quiet`. See the [CLI reference](https://git-dedup.ben3d.ca/docs/cli) for the supported paths.
 
 ## Configuration
 

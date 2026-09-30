@@ -523,6 +523,49 @@ it('passes shallow clones to Git without creating a pool', async () => {
   expect(reports).toEqual([]);
 });
 
+it('reports each fallback to plain Git once unless quiet', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  await mkdir(join(root, 'full'));
+  await writeFile(join(root, 'full', 'keep.txt'), 'keep\n');
+  const output = vi.spyOn(process.stderr, 'write');
+  const messages = () => output.mock.calls.map(([message]) => String(message)).filter((m) => m.includes('plain Git'));
+  try {
+    expect(await api.run(['clone', '--depth', '1', remote, 'shallow'])).toBe(0);
+    expect(messages()).toEqual(['git-dedup: clone option --depth is not supported; using plain Git\n']);
+    output.mockClear();
+    expect(await api.run(['clone', '-q', '--depth=1', remote, 'quiet'])).toBe(0);
+    expect(await api.run(['-C', 'shallow', 'status', '--short'])).toBe(0);
+    expect(messages()).toEqual([]);
+    expect(await api.run(['clone', remote, 'full'])).not.toBe(0);
+    expect(messages()).toEqual([`git-dedup: ${join(root, 'full')} is not an empty directory; using plain Git\n`]);
+  } finally {
+    output.mockRestore();
+  }
+  expect((await api.storeInfo()).remoteCount).toBe(0);
+});
+
+it('clones into an existing empty directory through the store', async () => {
+  const { root, remote, store } = await fixture();
+  await mkdir(join(root, 'empty'));
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'empty'])).toBe(0);
+  expect(git(['show', 'HEAD:hello.txt'], join(root, 'empty'))).toBe('hello');
+  await expectAlternate(store, join(root, 'empty', '.git'));
+});
+
+it('adopts a submodule added with options', async () => {
+  const { root, remote, store } = await fixture();
+  const parent = join(root, 'parent');
+  await mkdir(parent);
+  git(['init'], parent);
+  const api = createGitDedup({ cwd: parent, env: testEnv(root, store) });
+  expect(await api.run(['submodule', 'add', '-b', 'main', '--name', 'dep', remote, 'deps/project'])).toBe(0);
+  const module = join(parent, 'deps/project');
+  expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
+  await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], module));
+});
+
 it('reports pool reuse for accelerated clones', async () => {
   const { root, remote, store } = await fixture();
   const reports: StorageReport[] = [];
