@@ -380,6 +380,36 @@ it('reuses a preseeded gitdir for submodule update', async () => {
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], join(parent, 'deps/project')));
 });
 
+it('gives a preseeded submodule the native remote-tracking layout', async () => {
+  const { root, source, remote, store } = await fixture();
+  git(['push', 'origin', 'main:feature'], source);
+  const parent = join(root, 'parent');
+  await mkdir(parent);
+  git(['init'], parent);
+  git(['config', 'user.email', 'test@example.test'], parent);
+  git(['config', 'user.name', 'Test'], parent);
+  git(['-c', 'protocol.git.allow=always', 'submodule', 'add', remote, 'deps/project'], parent);
+  git(['commit', '-am', 'module'], parent);
+  git(['-c', 'protocol.git.allow=always', 'clone', '--recurse-submodules', parent, join(root, 'native')], root);
+  git(['submodule', 'deinit', '-f', '--all'], parent);
+  await rm(join(parent, '.git', 'modules'), { recursive: true, force: true });
+  const api = createGitDedup({ cwd: parent, env: testEnv(root, store) });
+  expect(await api.run(['submodule', 'update', '--init'])).toBe(0);
+  const layout = (module: string) => [
+    git(['for-each-ref', '--format=%(refname) %(symref)', 'refs/heads', 'refs/remotes'], module),
+    git(['config', '--get-regexp', '^(remote|branch)\\.'], module),
+  ];
+  const module = join(parent, 'deps/project');
+  expect(layout(module)).toEqual(layout(join(root, 'native', 'deps/project')));
+  expect(git(['rev-parse', 'origin/main'], module)).toBe(git(['rev-parse', 'main'], source));
+  await writeFile(join(source, 'hello.txt'), 'updated\n');
+  git(['commit', '-am', 'update'], source);
+  git(['push', 'origin', 'main'], source);
+  git(['submodule', 'update', '--remote'], parent);
+  expect(git(['rev-parse', 'HEAD'], module)).toBe(git(['rev-parse', 'main'], source));
+  await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], module));
+});
+
 it('preseeds a submodule in a new worktree', async () => {
   const { root, remote, store } = await fixture();
   const parent = join(root, 'parent');
