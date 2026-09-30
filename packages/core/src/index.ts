@@ -153,18 +153,36 @@ async function directorySize(path: string): Promise<number> {
 
 const remoteId = (key: string): string => createHash('sha256').update(key).digest('hex');
 
-function unsupportedClone(args: string[]): boolean {
-  return args.some((arg) =>
+function unsupportedClone(args: string[]): string | undefined {
+  return args.find((arg) =>
     /^(--depth|--shallow|--filter|--mirror|--bare|--reference|--dissociate|--no-hardlinks|--shared|--separate-git-dir|--bundle-uri|--sparse|--upload-pack|--server-option|--template|--config|--origin|--no-checkout|--single-branch|--no-single-branch|--revision|--jobs|-j|-o|-u|-c)(=|$)/.test(
       arg,
     ),
   );
 }
 
+/** Reports a handled command that is forwarded to plain Git, unless Git was asked to be quiet. */
+function fallback(args: string[], reason: string): undefined {
+  if (!args.includes('-q') && !args.includes('--quiet'))
+    process.stderr.write(`git-dedup: ${reason}; using plain Git\n`);
+  return undefined;
+}
+
+/** The last Git `fatal:` or `error:` line of a failure, without captured progress output. */
+function gitFailure(error: unknown): string {
+  const line = String(error)
+    .match(/\b(?:fatal|error): [^\r\n]*/g)
+    ?.at(-1)
+    ?.trim();
+  return line ? ` (${line})` : '';
+}
+
+/** Returns the parsed clone, or the reason git-dedup cannot handle it. */
 function parseClone(
   args: string[],
-): { remote: string; destination?: string; recurse: boolean; branch?: string; forwarded: string[] } | undefined {
-  if (unsupportedClone(args)) return undefined;
+): { remote: string; destination?: string; recurse: boolean; branch?: string; forwarded: string[] } | string {
+  const unsupported = unsupportedClone(args);
+  if (unsupported) return `clone option ${unsupported.split('=')[0]} is not supported`;
   const positional: string[] = [];
   let recurse = false;
   let branch: string | undefined;
@@ -177,7 +195,7 @@ function parseClone(
     }
     if (arg === '-b' || arg === '--branch') {
       branch = args[++i];
-      if (!branch) return undefined;
+      if (!branch) return `clone option ${arg} requires a value`;
       forwarded.push(arg, branch);
       continue;
     }
@@ -195,10 +213,10 @@ function parseClone(
       forwarded.push(arg);
       continue;
     }
-    if (arg.startsWith('-')) return undefined;
+    if (arg.startsWith('-')) return `clone option ${arg.split('=')[0]} is not supported`;
     positional.push(arg);
   }
-  if (positional.length < 1 || positional.length > 2) return undefined;
+  if (positional.length < 1 || positional.length > 2) return 'clone expects a repository and an optional directory';
   return { remote: positional[0]!, destination: positional[1], recurse, branch, forwarded };
 }
 
@@ -208,6 +226,22 @@ function defaultCloneName(remote: string): string {
     .split(/[/:]/)
     .at(-1)!
     .replace(/\.git$/, '');
+}
+
+function submoduleAddPath(args: string[]): string | undefined {
+  const positional: string[] = [];
+  for (let i = 1; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === '--') {
+      positional.push(...args.slice(i + 1));
+      break;
+    }
+    // Options of `git submodule add` that take a separate value.
+    if (['-b', '--branch', '--reference', '--ref-format', '--name', '--depth'].includes(arg)) i++;
+    else if (!arg.startsWith('-')) positional.push(arg);
+  }
+  if (positional.length === 1) return defaultCloneName(positional[0]!);
+  return positional.length === 2 ? positional[1] : undefined;
 }
 
 function resolveSubmoduleRemote(parent: string, child: string): string | undefined {
@@ -620,32 +654,36 @@ export function createGitDedup(options: GitDedupOptions = {}) {
 
   async function clone(args: string[], effectiveCwd: string): Promise<number | undefined> {
     const parsed = parseClone(args);
-    if (!parsed) return undefined;
+    if (typeof parsed === 'string') return fallback(args, parsed);
     const key = await remoteKey(parsed.remote, effectiveCwd);
-    if (!key) return undefined;
+    if (!key) return fallback(args, 'remote is not a supported network URL');
     const destination = resolve(effectiveCwd, parsed.destination ?? defaultCloneName(parsed.remote));
-    if (await isPresent(destination)) return undefined;
+    // Like Git, clone into a missing or empty directory.
+    const entries = await readdir(destination).catch((error: NodeJS.ErrnoException) =>
+      error.code === 'ENOENT' ? [] : undefined,
+    );
+    if (!entries || entries.length) return fallback(args, `${destination} is not an empty directory`);
     const root = await storePath();
     // Lock only the pool writes. The pool never prunes objects, so git clone can read it
     // while other processes fetch or repack, and the new tips are pinned right after.
     let poolReused = false;
     let fetched: string | undefined;
+    let fetchError: unknown;
     // Like git clone: progress on a terminal or with --progress, never with -q/--quiet.
     const quiet = parsed.forwarded.some((arg) => arg === '-q' || arg === '--quiet');
     const progress = !quiet && (process.stderr.isTTY || parsed.forwarded.includes('--progress'));
     try {
       fetched = await withLock(root, async () => {
         poolReused = options.onStorageReport ? await isPresent(poolPath(root)) : false;
-        return fetchRemote(root, parsed.remote, key, progress).catch(() => undefined);
+        return fetchRemote(root, parsed.remote, key, progress).catch((error: unknown) => {
+          fetchError = error;
+          return undefined;
+        });
       });
     } catch {
-      process.stderr.write('git-dedup: object pool lock unavailable; using Git clone\n');
-      return undefined;
+      return fallback(args, 'object pool lock unavailable');
     }
-    if (!fetched) {
-      process.stderr.write('git-dedup: object pool unavailable; using Git clone\n');
-      return undefined;
-    }
+    if (!fetched) return fallback(args, `object pool unavailable${gitFailure(fetchError)}`);
     const pool = fetched;
     const cloneArgs = ['clone', '--reference', pool, ...parsed.forwarded, parsed.remote, destination];
     const result = await git(cloneArgs, effectiveCwd, true);
@@ -718,8 +756,9 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     if (args[0] === 'add') {
       const code = (await git(['submodule', ...args], at, true)).code;
       if (code !== 0) return code;
-      const target = args.length === 2 ? defaultCloneName(args[1]!) : args.length === 3 ? args[2] : undefined;
-      if (target && !target.startsWith('-')) {
+      const target = submoduleAddPath(args);
+      if (!target) fallback(args, 'submodule path not recognized');
+      else {
         try {
           await add(resolve(at, target));
         } catch (error) {
@@ -728,18 +767,24 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       }
       return 0;
     }
-    if (args[0] !== 'update' || args.slice(1).some((arg) => !['--init', '--recursive', '--quiet', '-q'].includes(arg)))
+    if (args[0] !== 'update') return (await git(['submodule', ...args], at, true)).code;
+    const unsupported = args.slice(1).find((arg) => !['--init', '--recursive', '--quiet', '-q'].includes(arg));
+    if (unsupported) {
+      fallback(args, `submodule update ${unsupported} is not supported`);
       return (await git(['submodule', ...args], at, true)).code;
-    if ((await git(['config', '--get', 'submodule.active'], at)).code === 0)
+    }
+    if ((await git(['config', '--get', 'submodule.active'], at)).code === 0) {
+      fallback(args, 'submodule.active is configured');
       return (await git(['submodule', ...args], at, true)).code;
+    }
     if (args.includes('--init')) {
       const init = (await git(['submodule', 'init'], at, true)).code;
       if (init !== 0) return init;
     }
     try {
       await seedSubmodules(at);
-    } catch {
-      process.stderr.write('git-dedup: submodule adoption unavailable; using Git\n');
+    } catch (error) {
+      fallback(args, `submodule adoption unavailable${gitFailure(error)}`);
     }
     const recursive =
       args.includes('--recursive') &&
@@ -1122,7 +1167,10 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         /^(--reason|--track)=/.test(arg)
       )
         continue;
-      if (arg.startsWith('-')) return (await git(['worktree', ...args], at, true)).code;
+      if (arg.startsWith('-')) {
+        fallback(args, `worktree add ${arg.split('=')[0]} is not supported`);
+        return (await git(['worktree', ...args], at, true)).code;
+      }
       path = arg;
       break;
     }
@@ -1138,8 +1186,16 @@ export function createGitDedup(options: GitDedupOptions = {}) {
 
   async function run(args: string[]): Promise<number> {
     const parsed = parseGlobal(args, cwd);
-    if (incomingEnv.GITX_ACTIVE === '1' || incomingEnv.GIT_DEDUP_ACTIVE === '1' || hasRepositoryEnvironment || !parsed)
+    if (incomingEnv.GITX_ACTIVE === '1' || incomingEnv.GIT_DEDUP_ACTIVE === '1' || !parsed)
       return (await git(args, cwd, true)).code;
+    const managed =
+      parsed.command === 'clone' ||
+      (parsed.command === 'submodule' && ['add', 'update'].includes(parsed.rest[0]!)) ||
+      (parsed.command === 'worktree' && parsed.rest[0] === 'add');
+    if (hasRepositoryEnvironment) {
+      if (managed) fallback(parsed.rest, 'Git repository environment variables are set');
+      return (await git(args, cwd, true)).code;
+    }
     // -C is resolved explicitly. Other global options can change Git semantics, so forward intact.
     for (let i = 0; i < parsed.prefix.length; i++) {
       const arg = parsed.prefix[i]!;
@@ -1148,6 +1204,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         continue;
       }
       if (arg.startsWith('-C')) continue;
+      if (managed) fallback(parsed.rest, `global option ${arg.split('=')[0]} is not supported`);
       return (await git(args, cwd, true)).code;
     }
     if (parsed.cwd !== cwd) {
