@@ -71,7 +71,7 @@ Other Git commands and unsupported clone forms pass through to Git. Local path c
 | `gitx store`                 | Show store path, mirror count, and size                                |
 | `gitx store fetch`           | Fetch and repack mirrors                                               |
 | `gitx store gc --unused 30d` | Remove mirrors unused for the specified age                            |
-| `gitx doctor`                | Inspect filesystem, Git, and LFS setup                                 |
+| `gitx doctor`                | Inspect filesystem and Git setup                                       |
 
 ### Optional storage reports
 
@@ -82,7 +82,7 @@ gitx cache ./gitx-extra --stats
 
 Reports go to stderr and show whether a mirror was reused or created, bytes shared through hard links, and bytes copied. Clone savings estimate duplicate pack bytes avoided; cache savings compare private pack bytes before and after adoption.
 
-Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects and Git LFS. These are logical file-size estimates, not measured disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet. Plain Git fallback does not print a report.
+Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects. These are logical file-size estimates, not measured disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet. Plain Git fallback does not print a report.
 
 ## Configuration
 

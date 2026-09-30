@@ -725,8 +725,6 @@ export function createGitx(options: GitxOptions = {}) {
         // Copying rather than linking is still safe; link where the filesystem permits.
         await markLinkedPacks(mirror, commonGitdir);
         await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '--no-pack-kept-objects'], repo);
-        const localLfs = join(commonGitdir, 'lfs', 'objects');
-        if (await isPresent(localLfs)) await copyTree(localLfs, join(root, 'lfs', 'objects'));
         result.cached++;
         if (options.onStorageReport) {
           const [bytes, afterUniqueBytes] = await Promise.all([
@@ -920,16 +918,6 @@ function processExists(pid: number): boolean {
     return true;
   } catch (error) {
     return (error as NodeJS.ErrnoException).code === 'EPERM';
-  }
-}
-
-async function copyTree(from: string, to: string): Promise<void> {
-  await mkdir(to, { recursive: true });
-  for (const entry of await readdir(from, { withFileTypes: true })) {
-    const source = join(from, entry.name);
-    const destination = join(to, entry.name);
-    if (entry.isDirectory()) await copyTree(source, destination);
-    else if (entry.isFile() && !(await isPresent(destination))) await copyFile(source, destination);
   }
 }
 

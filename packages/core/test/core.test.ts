@@ -344,7 +344,7 @@ it('fetches and expires mirrors without damaging existing consumers', async () =
   await expect(api.gc('garbage')).rejects.toThrow('Expected age');
 });
 
-it('retains local LFS objects when adopting and deleting the store', async () => {
+it('leaves local LFS objects untouched when adopting and deleting the store', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
   git(['clone', remote, consumer], root);
@@ -353,9 +353,8 @@ it('retains local LFS objects when adopting and deleting the store', async () =>
   await writeFile(join(local, 'object'), 'locally authored LFS content');
   const api = createGitx({ cwd: root, env: testEnv(root, store) });
   expect((await api.cache(consumer)).cached).toBe(1);
-  expect(await readFile(join(store, 'lfs', 'objects', 'aa', 'bb', 'object'), 'utf8')).toBe(
-    'locally authored LFS content',
-  );
+  await expect(stat(join(store, 'lfs'))).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(await readFile(join(local, 'object'), 'utf8')).toBe('locally authored LFS content');
   await rm(store, { recursive: true, force: true });
   expect(await readFile(join(local, 'object'), 'utf8')).toBe('locally authored LFS content');
   git(['fsck', '--full'], consumer);

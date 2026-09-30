@@ -70,7 +70,7 @@ console.log({ cached, skipped });
 console.log(await gitx.storeInfo());
 ```
 
-Cache adoption is repeatable and preserves local commits. Existing local LFS objects are copied into shared storage while retaining their originals.
+Cache adoption is repeatable and preserves local commits.
 
 ### Observe storage sharing
 
@@ -96,7 +96,7 @@ await gitx.cache('./gitx-checkout');
 
 The callback enables metadata scans after optimized clones and cache adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for cache adoption. The package exports `GitxOptions`, `StorageReport`, `StoreInfo`, `CacheResult`, `DoctorCheck`, and `DoctorResult` types.
 
-Clone estimates count duplicate pack bytes avoided; cache estimates count the reduction in private pack bytes. Counts cover `.pack`, `.idx`, and `.rev` files, excluding loose objects and LFS. They measure logical file sizes, not physical disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet.
+Clone estimates count duplicate pack bytes avoided; cache estimates count the reduction in private pack bytes. Counts cover `.pack`, `.idx`, and `.rev` files, excluding loose objects. They measure logical file sizes, not physical disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet.
 
 ## Configuration
 
