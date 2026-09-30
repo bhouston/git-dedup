@@ -97,6 +97,29 @@ it('lists registered remotes without creating an empty store', async () => {
   await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+it('waits for a pool lock held by a live process instead of failing', async () => {
+  const { root, remote, store } = await fixture();
+  const lock = join(root, '.store.gitx-lock');
+  await mkdir(lock);
+  await writeFile(join(lock, 'owner'), `${process.pid}\n`);
+  // Skip the 50 ms lock polls and release the lock after the old 1200-poll limit.
+  const setTimer = globalThis.setTimeout;
+  let polls = 0;
+  const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((done: () => void, ms?: number) => {
+    if (ms !== 50) return setTimer(done, ms);
+    if (++polls === 1250) return setTimer(() => void rm(lock, { recursive: true }).then(done), 0);
+    return setTimer(done, 0);
+  }) as typeof setTimeout);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  try {
+    expect(await api.run(['clone', remote, 'one'])).toBe(0);
+  } finally {
+    spy.mockRestore();
+  }
+  expect(polls).toBeGreaterThanOrEqual(1250);
+  await expectAlternate(store, join(root, 'one', '.git'));
+});
+
 it('clones twice into one pool and makes both consumers depend on it', async () => {
   const { root, remote, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
