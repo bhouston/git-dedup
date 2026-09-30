@@ -13,3 +13,13 @@ The store is part of the object database for every linked checkout. Keep it at t
 The store defaults to `~/.git-dedup`; set `GIT_DEDUP_STORE` to choose another location before adding a checkout or cloning. Changing this variable later does not rewrite existing alternate paths.
 
 When upgrading from gitx, git-dedup automatically reuses an existing store at its old location. You can also set `GIT_DEDUP_STORE` explicitly. Keep the existing directory in place while any checkout points to it.
+
+## Containers, sandboxes, and other machines
+
+The alternates path is absolute. A linked checkout breaks wherever that path is missing or unreadable:
+
+- A dev container or Docker bind mount that includes the checkout but not the store.
+- A sandboxed coding agent or remote environment that can read the project but not the store.
+- A copy of the checkout on another machine, made with `rsync`, an archive, or a synced folder.
+
+Git then reports missing objects. Mount the store at the same absolute path, or grant read access to it. To move or copy a checkout elsewhere, first detach it with `git-dedup store remove <path>`, which copies the objects it needs back into the checkout.
