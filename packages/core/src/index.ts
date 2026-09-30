@@ -311,10 +311,25 @@ function poolPath(root: string): string {
   return join(root, 'pool.git');
 }
 
+// Keep URL credentials out of the store; Git credential helpers supply them at fetch time.
+// HTTP(S) userinfo is a credential. Other schemes keep the user name, which SSH needs.
+function redactRemote(remote: string, mask = ''): string {
+  return remote.replace(/^([a-z][a-z0-9+.-]*:\/\/)([^/?#]*)@/i, (authority, scheme: string, userinfo: string) => {
+    const user = /^https?:/i.test(scheme) ? '' : userinfo.split(':')[0];
+    if (user === userinfo) return authority;
+    const kept = user + (mask && (user ? ':' : '') + mask);
+    return scheme + (kept && `${kept}@`);
+  });
+}
+
+function registration(remote: string, key: string): string {
+  return JSON.stringify({ key, remote: redactRemote(remote) }) + '\n';
+}
+
 async function registerRemote(root: string, remote: string, key: string): Promise<void> {
   const id = remoteId(key);
   await mkdir(join(root, 'remotes'), { recursive: true });
-  await writeFile(join(root, 'remotes', `${id}.json`), JSON.stringify({ key, remote }) + '\n');
+  await writeFile(join(root, 'remotes', `${id}.json`), registration(remote, key));
 }
 
 async function setAlternate(gitdir: string, pool: string): Promise<void> {
@@ -758,7 +773,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
             .includes(join(pool, 'objects'));
           const registered =
             (await readFile(join(root, 'remotes', `${remoteId(key)}.json`), 'utf8').catch(() => '')) ===
-            JSON.stringify({ key, remote: url }) + '\n';
+            registration(url, key);
           const stateMatches =
             poolReused && alreadyLinked && registered && (await readFile(marker, 'utf8').catch(() => '')) === state;
           const currentPins = stateMatches ? await pinnedTips(pool, await consumerId(commonGitdir)) : undefined;
@@ -868,7 +883,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
             `${remoteId(value.key)}.json` !== name
           )
             throw new Error(`Invalid git-dedup remote registration: ${name}`);
-          return { key: value.key, remote: value.remote };
+          return { key: value.key, remote: redactRemote(value.remote, '***') };
         }),
     );
     return remotes.toSorted((a, b) => (a.key < b.key ? -1 : a.key > b.key ? 1 : 0));
