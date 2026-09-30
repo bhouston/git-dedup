@@ -162,6 +162,29 @@ it('removes only legacy gitx pack keeps during cache migration', async () => {
   git(['fsck', '--full'], consumer);
 });
 
+it('rewrites an existing commit graph after repacking into the pool', async () => {
+  const { root, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  git(['commit-graph', 'write', '--reachable'], consumer);
+  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  expect((await api.cache(consumer)).cached).toBe(1);
+  git(['commit-graph', 'verify'], consumer);
+  git(['fsck', '--full'], consumer);
+});
+
+it('removes derived commit graphs from the shared pool', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
+  const pool = join(store, 'pool.git');
+  git(['commit-graph', 'write', '--reachable'], pool);
+  expect(await stat(join(pool, 'objects', 'info', 'commit-graph'))).toBeDefined();
+  expect((await api.cache(join(root, 'consumer'))).cached).toBe(1);
+  await expect(stat(join(pool, 'objects', 'info', 'commit-graph'))).rejects.toMatchObject({ code: 'ENOENT' });
+  git(['fsck', '--full'], join(root, 'consumer'));
+});
+
 it('reuses a preseeded gitdir for submodule update', async () => {
   const { root, remote, store } = await fixture();
   const parent = join(root, 'parent');

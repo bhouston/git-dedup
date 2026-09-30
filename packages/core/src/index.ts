@@ -408,6 +408,12 @@ export function createGitx(options: GitxOptions = {}) {
     if (!(await isPresent(pool))) await checked(['init', '--bare', '--object-format=sha1', pool]);
     if ((await checked(['-C', pool, 'rev-parse', '--show-object-format'])) !== 'sha1')
       throw new Error('Unsupported Git object format in shared pool');
+    // Git fsck in an alternate consumer can misread a commit graph from a pool
+    // containing unrelated histories. The graph is derived data, so omit it.
+    await checked(['-C', pool, 'config', 'gc.writeCommitGraph', 'false']);
+    await checked(['-C', pool, 'config', 'maintenance.commit-graph.enabled', 'false']);
+    await rm(join(pool, 'objects', 'info', 'commit-graph'), { force: true });
+    await rm(join(pool, 'objects', 'info', 'commit-graphs'), { recursive: true, force: true });
     return pool;
   }
 
@@ -622,6 +628,11 @@ export function createGitx(options: GitxOptions = {}) {
         await setAlternate(commonGitdir, pool);
         await removeLegacyKeeps(commonGitdir);
         await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
+        if (
+          (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graph'))) ||
+          (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graphs')))
+        )
+          await checked(['commit-graph', 'write', '--reachable'], repo);
         await checked(['fsck', '--connectivity-only', '--no-reflogs'], repo);
         result.cached++;
         if (options.onStorageReport) {
