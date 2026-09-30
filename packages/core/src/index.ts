@@ -36,6 +36,8 @@ export interface DoctorCheck {
   detail: string;
 }
 export interface DoctorResult {
+  /** True when no object pool exists yet; the pool check is then omitted. */
+  empty: boolean;
   checks: DoctorCheck[];
 }
 export interface StoreAddResult {
@@ -959,9 +961,8 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     const root = await storePath();
     const checks: DoctorCheck[] = [];
     const pool = poolPath(root);
-    if (!(await isPresent(pool))) {
-      checks.push({ name: 'pool', ok: false, detail: `${pool}: object pool is missing` });
-    } else {
+    const empty = !(await isPresent(pool));
+    if (!empty) {
       try {
         const format = await checked(['-C', pool, 'rev-parse', '--show-object-format']);
         const bare = await checked(['-C', pool, 'rev-parse', '--is-bare-repository']);
@@ -984,7 +985,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     } catch (error) {
       checks.push({ name: 'git', ok: false, detail: error instanceof Error ? error.message : String(error) });
     }
-    return { checks };
+    return { empty, checks };
   }
 
   async function addWorktree(args: string[], at: string): Promise<number> {

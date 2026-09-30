@@ -10,7 +10,7 @@ The store is part of the object database for every linked checkout. Keep it at t
 
 git-dedup never saves credentials embedded in a remote URL, such as `https://user:token@host/...`. It strips them before registering the remote, and `store list` shows any older saved credentials as `***`. Fetches from such remotes authenticate through a [Git credential helper](https://git-scm.com/docs/gitcredentials).
 
-`git-dedup store` reports the path, remote count, size, and health of the pool and Git executable. It reads the store without creating or changing it. A missing or invalid pool is reported as a warning and gives a nonzero exit code.
+`git-dedup store` reports the path, remote count, size, and health of the pool and Git executable. It reads the store without creating or changing it. Before the first clone or add, it says the store is empty, suggests `git-dedup clone <url>` or `git-dedup store add [path]`, and exits successfully. An invalid pool is reported as a warning and gives a nonzero exit code.
 
 The store defaults to `~/.git-dedup`; set `GIT_DEDUP_STORE` to choose another location before adding a checkout or cloning. Changing this variable later does not rewrite existing alternate paths.
 
