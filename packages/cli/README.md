@@ -84,6 +84,7 @@ Other Git commands and unsupported clone forms pass through to Git. Local path c
 | `git-dedup store`                       | Show store path, remote count, size, and Git and pool health checks                                                  |
 | `git-dedup store fetch`                 | Fetch registered remotes into the pool                                                                               |
 | `git-dedup store gc`                    | Compact the pool without pruning consumer objects                                                                    |
+| `git-dedup store prune`                 | Reclaim pool objects no registered checkout uses; refuses while a checkout is missing                                |
 
 ### Optional storage reports
 

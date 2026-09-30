@@ -130,6 +130,7 @@ describe('git-dedup CLI', () => {
     expect(doc.commands).not.toHaveProperty('git-dedup store refresh');
     expect(doc.commands).toHaveProperty('git-dedup store gc');
     expect(doc.commands).toHaveProperty('git-dedup store remove');
+    expect(doc.commands).toHaveProperty('git-dedup store prune');
     expect(doc.commands).not.toHaveProperty('git-dedup store clear');
     expect(doc.commands).not.toHaveProperty('git-dedup store set');
   });
@@ -168,6 +169,26 @@ describe('git-dedup CLI', () => {
     const again = await cli.run(['store', 'remove', 'consumer'], options);
     expect(again).toSucceed();
     expect(again).toHaveStdout('Nothing to remove: consumer is not linked to the store.');
+  });
+
+  it('prunes only after a deleted checkout is forgotten', async () => {
+    const { dir, remote } = await gitRemoteFixture();
+    const options = { cwd: dir, env: isolatedEnv(dir) };
+    expect(await cli.run(['clone', remote, 'consumer'], options)).toSucceed();
+    expect(await cli.run(['clone', remote, 'deleted'], options)).toSucceed();
+    await rm(join(dir, 'deleted'), { recursive: true, force: true });
+    const refused = await cli.run(['store', 'prune'], options);
+    expect(refused).toFail();
+    expect(refused).toHaveStderr(/If it was deleted, run git-dedup store remove --forget <old path>/);
+    const removed = await cli.run(['store', 'remove', 'deleted'], options);
+    expect(removed).toFail();
+    expect(removed).toHaveStderr(/run git-dedup store remove --forget/);
+    const forgotten = await cli.run(['store', 'remove', '--forget', 'deleted'], options);
+    expect(forgotten).toSucceed();
+    expect(forgotten).toHaveStdout(/Forgot .*deleted\/\.git/);
+    const result = await cli.run(['store', 'prune'], options);
+    expect(result).toSucceed();
+    expect(result).toHaveStdout(/Reclaimed \d/);
   });
 
   it.each([['clear'], ['set', 'new-store']])('rejects removed store command %s', async (...args) => {

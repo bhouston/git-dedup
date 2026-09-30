@@ -15,9 +15,23 @@ export const builder = (parser: Argv) =>
       type: 'boolean',
       default: false,
       describe: 'Show full Git errors for skipped and failed repositories',
+    })
+    .option('forget', {
+      type: 'boolean',
+      default: false,
+      describe: 'Release a deleted checkout so store prune can reclaim its objects',
     });
 
-export const handler = async (args: ArgumentsCamelCase<{ path: string; verbose: boolean }>) => {
+export const handler = async (args: ArgumentsCamelCase<{ path: string; verbose: boolean; forget: boolean }>) => {
+  if (args.forget) {
+    const forgotten = await dedup().forget(args.path);
+    for (const gitdir of forgotten) console.log(`Forgot ${gitdir}`);
+    if (!forgotten.length) {
+      console.error(`No registered checkout matches ${args.path}.`);
+      process.exitCode = 1;
+    }
+    return;
+  }
   const result = await dedup().remove(args.path);
   for (const repository of result.repositories) {
     if (repository.status === 'removed')

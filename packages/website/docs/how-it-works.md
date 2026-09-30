@@ -6,7 +6,9 @@ Supported `git-dedup clone` commands fetch into the pool, then run native `git c
 
 `git-dedup store add` imports an existing checkout's refs and HEAD into the pool, installs the alternate, and repacks the checkout to remove private copies of objects already in the pool. It then refreshes the remote when available. Linked worktrees use their shared common object directory. The same process visits discoverable submodules. git-dedup is not a disposable cache: linked checkouts depend on the store for objects.
 
-The pool records newly seen consumer ref tips during checkout adoption. `store gc` compacts without pruning unreachable objects. Preserving old tips can make the pool grow over time.
+The pool pins newly seen consumer ref tips during clone, submodule preparation, and checkout adoption, and skips tips that a remote ref in the pool already holds. It records each consumer's Git directory in `<store>/consumers`. `store gc` compacts without pruning unreachable objects. Preserving old tips can make the pool grow over time.
+
+`store prune` is the only command that deletes pool objects. It first re-pins everything each registered checkout can reach: all refs, the HEAD and index of every worktree, reflogs, and in-progress merge, rebase, or cherry-pick state. It then prunes pool objects that no remaining ref reaches. It refuses while a registered Git directory is gone or carries a different consumer ID, because a moved checkout still borrows from the pool. `store add <new path>` re-registers a moved checkout, and `store remove --forget <old path>` releases a deleted one. See [pruning](safety.md#pruning) before running it.
 
 Supported `submodule update --init` commands prepare missing submodule Git directories with the same pool as reference. Recursive updates cover nested modules, including in new worktrees. Other Git commands and unsupported clone forms pass through to native Git, including local source paths, shallow or partial clones, explicit reference options, and SHA-256 repositories.
 
