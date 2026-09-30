@@ -169,13 +169,22 @@ describe('git-dedup CLI', () => {
   it('runs the default store command from its directory', async () => {
     const dir = await fixture();
     const result = await cli.run(['store'], { env: isolatedEnv(dir) });
-    expect(result).toFail();
+    expect(result).toSucceed();
     expect(result).toHaveStdout(join(dir, 'store'));
     expect(result).toHaveStdout('Remotes: 0');
     expect(result).toHaveStdout('Size: 0B');
-    expect(result).toHaveStdout(/WARN pool: .*object pool is missing/);
+    expect(result).toHaveStdout(
+      'The store is empty. Start with `git-dedup clone <url>` or `git-dedup store add [path]`.',
+    );
+    expect(result).not.toHaveStdout(/WARN/);
     expect(result).toHaveStdout(/OK git: .*git version/);
     await expect(access(join(dir, 'store'))).rejects.toThrow();
+
+    await mkdir(join(dir, 'store', 'pool.git'), { recursive: true });
+    const invalid = await cli.run(['store'], { env: isolatedEnv(dir) });
+    expect(invalid).toFail();
+    expect(invalid).toHaveStdout(/WARN pool: /);
+    expect(invalid).not.toHaveStdout(/store is empty/);
   });
 
   it('shows passing store health after cloning a remote', async () => {

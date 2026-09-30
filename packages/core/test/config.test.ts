@@ -63,9 +63,9 @@ it('doctor reports checks and never changes global Git configuration', async () 
   await writeFile(config, '[user]\n name = Test\n');
   const before = await readFile(config, 'utf8');
   const result = await api.doctor();
-  expect(result.checks.map((check) => check.name)).toEqual(['pool', 'git']);
-  expect(result.checks[0]).toMatchObject({ ok: false, detail: expect.stringContaining('object pool is missing') });
-  expect(result.checks[1]).toMatchObject({ ok: true });
+  expect(result.empty).toBe(true);
+  expect(result.checks.map((check) => check.name)).toEqual(['git']);
+  expect(result.checks[0]).toMatchObject({ ok: true });
   await expect(readdir(store)).rejects.toMatchObject({ code: 'ENOENT' });
   expect(await readFile(config, 'utf8')).toBe(before);
 });
@@ -79,7 +79,7 @@ it('doctor recognizes a valid pool and reports an invalid pool without changing 
   await rm(pool, { recursive: true });
   await mkdir(pool);
   await writeFile(join(pool, 'sentinel'), 'unchanged');
-  expect((await api.doctor()).checks[0]).toMatchObject({ ok: false });
+  expect(await api.doctor()).toMatchObject({ empty: false, checks: [{ name: 'pool', ok: false }, { name: 'git' }] });
   expect(await readdir(pool)).toEqual(['sentinel']);
 });
 
