@@ -493,6 +493,11 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     // containing unrelated histories. The graph is derived data, so omit it.
     await checked(['-C', pool, 'config', 'gc.writeCommitGraph', 'false']);
     await checked(['-C', pool, 'config', 'maintenance.commit-graph.enabled', 'false']);
+    // Consumers borrow objects that a force push can leave unreachable in the
+    // pool. Automatic gc would prune them, so only store gc compacts the pool.
+    await checked(['-C', pool, 'config', 'gc.auto', '0']);
+    await checked(['-C', pool, 'config', 'maintenance.auto', 'false']);
+    await checked(['-C', pool, 'config', 'gc.pruneExpire', 'never']);
     await rm(join(pool, 'objects', 'info', 'commit-graph'), { force: true });
     await rm(join(pool, 'objects', 'info', 'commit-graphs'), { recursive: true, force: true });
     return pool;
