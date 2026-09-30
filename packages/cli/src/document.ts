@@ -21,7 +21,7 @@ export async function documentFromCommands(commands: CommandModule[]): Promise<O
       {
         name: 'stats',
         type: 'boolean',
-        summary: 'Show estimated shared storage savings for clone or cache',
+        summary: 'Show object pool use and cache storage measurements',
       },
     ],
   };

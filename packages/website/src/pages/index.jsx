@@ -6,17 +6,17 @@ import styles from './index.module.css';
 const cards = [
   {
     number: '01',
-    title: 'One mirror per remote',
-    body: 'A local bare mirror collects the remote’s Git objects so repeated clones can draw from one store.',
+    title: 'One object pool',
+    body: 'One bare Git repository collects objects from all registered remotes. Identical objects share storage.',
   },
   {
     number: '02',
     title: 'Normal working copies',
-    body: 'Clones remain ordinary repositories with their real origin URL. They do not depend on Git alternates.',
+    body: 'Clones remain ordinary repositories with their real origin URL. They borrow objects through Git alternates.',
   },
   {
     number: '03',
-    title: 'A safe way back',
+    title: 'Git command passthrough',
     body: 'Commands outside the supported path run through Git. Your existing Git workflow stays available.',
   },
 ];
@@ -36,15 +36,14 @@ export default function Home() {
               <em>Store once.</em>
             </h1>
             <p className={styles.lead}>
-              gitx automatically reuses Git objects across checkouts through a local mirror store. Built for short-lived
-              coding-agent workspaces, it gives you independent checkouts with fewer downloads and less duplicate
-              storage.
+              gitx collects Git objects from many remotes in one local pool. Supported checkouts borrow them through Git
+              alternates, reducing duplicate storage across clones and forks.
             </p>
             <pre className={styles.example}>
-              <code>{`# Automatically create or reuse a mirror in the default store: ~/.cache/gitx.
+              <code>{`# Populate the object pool in ~/.cache/gitx.
 gitx clone https://github.com/you/project.git project
 
-# Another checkout reuses the mirror instead of downloading it all again.
+# Another checkout borrows objects from the same pool.
 gitx clone https://github.com/you/project.git project-review
 cd project-review
 
@@ -54,8 +53,7 @@ git diff
 git log --oneline`}</code>
             </pre>
             <p className={styles.performance}>
-              For large repositories, reusing a populated store can turn a{' '}
-              <strong>100+ second fresh clone into a near-instant repeat checkout</strong>.
+              Repeated clones can borrow objects already in the pool, reducing download and storage work.
             </p>
             <div className={styles.actions}>
               <Link className={styles.primary} to="/docs">
@@ -82,8 +80,8 @@ git log --oneline`}</code>
           <p>
             Development often means several copies of the same repository: separate tasks, agents, experiments, and
             worktrees. gitx <strong>automatically</strong> puts reusable Git objects in a local store and keeps the
-            consumer repositories self-contained. It manages mirror creation, updates, and reuse for you, removing the
-            bookkeeping of maintaining mirrors and passing reference paths to each clone.
+            consumer repositories connected to it through Git alternates. It manages remote updates and reference paths
+            for you.
           </p>
         </section>
         <section className={styles.cards} aria-label="Design principles">
@@ -107,7 +105,7 @@ git log --oneline`}</code>
           </div>
           <figure
             className={styles.diagram}
-            aria-label="One remote mirrored into a local store and shared by three clones"
+            aria-label="One remote fetched into a shared object pool used by three clones"
           >
             <div className={styles.diagramHeader}>
               GIT OBJECT FLOW <span>● ● ●</span>
@@ -124,7 +122,7 @@ git log --oneline`}</code>
               <span className={styles.nodeIcon}>◆</span>
               <div>
                 <small>LOCAL STORE</small>
-                <strong>one bare mirror</strong>
+                <strong>one object pool</strong>
               </div>
               <span className={styles.shared}>shared</span>
             </div>
@@ -138,16 +136,13 @@ git log --oneline`}</code>
               <span>clone B</span>
               <span>clone C</span>
             </div>
-            <p>Independent checkouts. Shared object storage.</p>
+            <p>Working copies with shared object storage.</p>
           </figure>
         </section>
         <section className={styles.note}>
-          <strong>Designed to be removable.</strong>
-          <span>
-            Clones use their own Git object directories. Deleting the store does not remove objects already present in a
-            clone.
-          </span>
-          <Link to="/docs/safety">Read the safety model →</Link>
+          <strong>Keep the pool available.</strong>
+          <span>Cached checkouts borrow Git objects from the pool. Removing it can make their history unreadable.</span>
+          <Link to="/docs/safety">Read about the store dependency →</Link>
         </section>
       </main>
     </Layout>

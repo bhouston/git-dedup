@@ -7,13 +7,13 @@
 [![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-gitx automatically reuses Git objects across checkouts through a local mirror store. Built for short-lived coding-agent workspaces, it gives you independent checkouts with fewer downloads and less duplicate storage.
+gitx keeps Git objects from many remotes in one local object pool. Supported clones and cached repositories use Git alternates to borrow those objects, reducing duplicate storage across checkouts and forks.
 
 ```sh
-# Automatically create or reuse a mirror in the default store: ~/.cache/gitx.
+# Populate the shared object pool in ~/.cache/gitx.
 gitx clone https://github.com/you/project.git project
 
-# Another checkout reuses the mirror instead of downloading it all again.
+# Another checkout borrows objects from the same pool.
 gitx clone https://github.com/you/project.git project-review
 cd project-review
 
@@ -23,7 +23,7 @@ git diff
 git log --oneline
 ```
 
-For large repositories, reusing a populated store can turn a **100+ second fresh clone into a near-instant repeat checkout**.
+Repeated clones can borrow objects already in the pool, reducing download and storage work.
 
 **[Documentation](https://gitx.ben3d.ca/) · [Source](https://github.com/bhouston/gitx) · [Agent setup](https://gitx.ben3d.ca/docs/agents)**
 
@@ -39,7 +39,7 @@ gitx --help
 ## Usage
 
 ```sh
-# Repeated clones reuse the remote's mirror.
+# Repeated clones borrow from the shared pool.
 gitx clone https://github.com/bhouston/gitx.git gitx-main
 gitx --stats clone https://github.com/bhouston/gitx.git gitx-review
 
@@ -59,19 +59,19 @@ gitx submodule update --init --recursive
 gitx worktree add -b review ../project-review
 ```
 
-Supported updates prepare missing submodule repositories from mirrors, including nested modules with `--recursive`. `gitx submodule add` caches the module after Git creates it. `gitx worktree add` uses Git's common object database and initializes supported submodules in the new worktree; `--no-checkout` defers initialization.
+Supported updates prepare missing submodule repositories from the pool, including nested modules with `--recursive`. `gitx submodule add` caches the module after Git creates it. `gitx worktree add` uses Git's common object database and initializes supported submodules in the new worktree; `--no-checkout` defers initialization.
 
 Other Git commands and unsupported clone forms pass through to Git. Local path clones, shallow or partial clones, and SHA-256 repositories use ordinary Git behavior.
 
 ### Store commands
 
-| Command                      | Purpose                                                                |
-| ---------------------------- | ---------------------------------------------------------------------- |
-| `gitx cache [path]`          | Adopt or relink an existing repository and its discoverable submodules |
-| `gitx store`                 | Show store path, mirror count, and size                                |
-| `gitx store fetch`           | Fetch and repack mirrors                                               |
-| `gitx store gc --unused 30d` | Remove mirrors unused for the specified age                            |
-| `gitx doctor`                | Inspect filesystem, Git, and LFS setup                                 |
+| Command             | Purpose                                                                |
+| ------------------- | ---------------------------------------------------------------------- |
+| `gitx cache [path]` | Adopt or relink an existing repository and its discoverable submodules |
+| `gitx store`        | Show store path, remote count, and size                                |
+| `gitx store fetch`  | Fetch registered remotes into the pool                                 |
+| `gitx store gc`     | Compact the pool without pruning consumer objects                      |
+| `gitx doctor`       | Inspect the pool and Git setup                                         |
 
 ### Optional storage reports
 
@@ -80,9 +80,9 @@ gitx --stats clone https://github.com/bhouston/gitx.git gitx-extra
 gitx cache ./gitx-extra --stats
 ```
 
-Reports go to stderr and show whether a mirror was reused or created, bytes shared through hard links, and bytes copied. Clone savings estimate duplicate pack bytes avoided; cache savings compare private pack bytes before and after adoption.
+Reports go to stderr and show whether the pool already existed. Cache reports compare private pack bytes before and after adoption. Clone reports identify use of Git alternates; they do not estimate disk savings.
 
-Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects and Git LFS. These are logical file-size estimates, not measured disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet. Plain Git fallback does not print a report.
+Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects. These are logical file-size estimates, not measured disk blocks reclaimed. The first use populates the pool and can increase total disk use. Plain Git fallback does not print a report.
 
 ## Configuration
 
@@ -99,11 +99,11 @@ Changing `GITX_STORE` selects a different store; it does not move the existing o
 | `GITX_STORE`   | Override the store path for an invocation |
 | `gitx.gitPath` | Select the Git executable                 |
 
-## Storage safety
+## Store dependency
 
-gitx is safe by default. Every checkout keeps its own complete set of Git objects and uses no Git alternates, so deleting the store never breaks a repository. Keep the store on the same filesystem as your checkouts so objects are hardlinked rather than copied.
+Cached checkouts depend on the object pool through Git alternates. Deleting or moving the store can make their history unreadable. The pool can be on a different filesystem.
 
-Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
+Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [store dependency guide](https://gitx.ben3d.ca/docs/safety) for details.
 
 ## Command documentation and agents
 

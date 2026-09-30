@@ -1,15 +1,8 @@
-import type { ArgumentsCamelCase, Argv } from 'yargs';
 import { gitx } from '../../context.js';
 
 export const command = 'gc';
-export const describe = 'Remove mirrors unused for a given period';
-export const builder = (parser: Argv) =>
-  parser.option('unused', {
-    type: 'string',
-    default: '30d',
-    describe: 'Minimum age since last use, e.g. 30d',
-  });
-export const handler = async (args: ArgumentsCamelCase<{ unused: string }>) => {
-  const result = await gitx().gc(args.unused);
-  console.log(`Removed ${result.removed} mirror(s).`);
+export const describe = 'Compact the shared object pool without pruning consumer objects';
+export const handler = async () => {
+  const result = await gitx().gc();
+  console.log(result.compacted ? 'Compacted the shared object pool.' : 'The shared object pool is empty.');
 };

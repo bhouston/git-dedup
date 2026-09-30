@@ -15,20 +15,15 @@ function bytes(value: number): string {
 /** Report logical pack bytes; no filesystem allocation estimate is available. */
 export function printStorageReports(reports: StorageReport[]): void {
   for (const report of reports) {
-    const prefix = `gitx: ${report.operation} ${report.repository}: ${report.mirrorReused ? 'reused' : 'created'} mirror; `;
+    const prefix = `gitx: ${report.operation} ${report.repository}: ${report.poolReused ? 'reused' : 'created'} object pool; `;
     if (report.operation === 'cache') {
       process.stderr.write(
         prefix +
-          `${bytes(report.sharedPackBytes)} shared, ${bytes(report.copiedPackBytes)} copied; ` +
           `private packs ${bytes(report.beforeUniqueBytes ?? 0)} -> ${bytes(report.afterUniqueBytes ?? 0)}; ` +
           `estimated private pack reduction ${bytes(report.estimatedSavedBytes)}\n`,
       );
     } else {
-      process.stderr.write(
-        prefix +
-          `${bytes(report.sharedPackBytes)} shared, ${bytes(report.copiedPackBytes)} copied; ` +
-          `estimated duplicate pack bytes avoided ${bytes(report.estimatedSavedBytes)}\n`,
-      );
+      process.stderr.write(prefix + 'objects borrowed through Git alternates\n');
     }
   }
   if (reports.length) {
@@ -39,10 +34,7 @@ export function printStorageReports(reports: StorageReport[]): void {
           'logical pack bytes only; actual disk reclaimed may differ.\n',
       );
     } else {
-      process.stderr.write(
-        `gitx: estimated duplicate pack bytes avoided ${bytes(total)} (${total.toLocaleString('en-US')} bytes); ` +
-          'first use creates the mirror; actual space saved versus a plain clone may be zero.\n',
-      );
+      process.stderr.write('gitx: clone storage depends on objects already present in the shared pool.\n');
     }
   }
 }

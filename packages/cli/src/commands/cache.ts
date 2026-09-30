@@ -14,7 +14,7 @@ export const builder = (parser: Argv) =>
     .option('stats', {
       type: 'boolean',
       default: false,
-      describe: 'Show estimated shared storage savings',
+      describe: 'Show the change in private pack storage',
     });
 export const handler = async (args: ArgumentsCamelCase<{ path?: string; stats: boolean }>) => {
   const reports: StorageReport[] = [];

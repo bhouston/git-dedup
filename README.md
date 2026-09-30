@@ -7,13 +7,13 @@
 [![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-gitx automatically reuses Git objects across checkouts through a local mirror store. Built for short-lived coding-agent workspaces, it gives you independent checkouts with fewer downloads and less duplicate storage.
+gitx keeps Git objects from many remotes in one local object pool. Supported clones and cached repositories use Git alternates to borrow those objects, reducing duplicate storage across checkouts and forks.
 
 ```sh
-# Automatically create or reuse a mirror in the default store: ~/.cache/gitx.
+# Populate the shared object pool in ~/.cache/gitx.
 gitx clone https://github.com/you/project.git project
 
-# Another checkout reuses the mirror instead of downloading it all again.
+# Another checkout borrows objects from the same pool.
 gitx clone https://github.com/you/project.git project-review
 cd project-review
 
@@ -23,20 +23,20 @@ git diff
 git log --oneline
 ```
 
-For large repositories, reusing a populated store can turn a **100+ second fresh clone into a near-instant repeat checkout**.
+Repeated clones can borrow objects already in the pool, reducing download and storage work.
 
 **[Documentation](https://gitx.ben3d.ca/) · [CLI reference](https://gitx.ben3d.ca/docs/cli) · [Agent setup](https://gitx.ben3d.ca/docs/agents)**
 
 ## Features
 
-- Reuse local mirrors across repeated remote clones.
+- Reuse one object pool across remotes and repeated clones.
 - Consolidate existing repositories, including local commits and discoverable submodules.
-- Prepare nested submodules and submodules inside new worktrees from mirrors.
+- Prepare nested submodules and submodules inside new worktrees from the pool.
 - Inspect storage sharing with optional `--stats` reports.
-- Fetch and prune the store while preserving consumers' Git objects.
+- Fetch registered remotes and compact the pool while retaining consumer objects.
 - Use the TypeScript core library in your own Node.js tools.
 
-Requires **Node.js 22+ and Git**. Tested on macOS and Linux. Git LFS is optional for repositories that use it.
+Requires **Node.js 22+ and Git**. Tested on macOS and Linux.
 
 ## Installation
 
@@ -49,7 +49,7 @@ The executable is `gitx`. The source repository is [bhouston/gitx](https://githu
 ## Quick start
 
 ```sh
-# Clone the same remote into two independent working copies.
+# Clone the same remote into two working copies.
 gitx clone https://github.com/bhouston/gitx.git gitx-main
 gitx --stats clone https://github.com/bhouston/gitx.git gitx-review
 
@@ -72,15 +72,15 @@ gitx submodule update --init --recursive
 gitx worktree add -b review ../project-review
 ```
 
-Supported submodule updates prepare missing module repositories from mirrors before Git checks them out. `worktree add` shares the main repository's common object database and initializes supported submodules in the new worktree. With `--no-checkout`, initialization waits for a later submodule update. `submodule add` uses Git, then caches the added module.
+Supported submodule updates prepare missing module repositories from the pool before Git checks them out. `worktree add` shares the main repository's common object database and initializes supported submodules in the new worktree. With `--no-checkout`, initialization waits for a later submodule update. `submodule add` uses Git, then caches the added module.
 
 Unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, use ordinary Git behavior. See the [CLI reference](https://gitx.ben3d.ca/docs/cli) for the supported paths.
 
 ### Storage reports
 
-Reports go to stderr and show whether a mirror was reused or created, bytes shared through hard links, and bytes copied. Clone savings estimate duplicate pack bytes avoided; cache savings compare private pack bytes before and after adoption.
+Reports go to stderr and show whether the pool already existed. Cache reports compare private pack bytes before and after adoption. Clone reports identify use of Git alternates; they do not estimate disk savings.
 
-Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects and Git LFS. These are logical file-size estimates, not measured disk blocks reclaimed. Creating a mirror on first use may yield no net savings yet. Plain Git fallback does not print a report.
+Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects. These are logical file-size estimates, not measured disk blocks reclaimed. The first use populates the pool and can increase total disk use. Plain Git fallback does not print a report.
 
 ## Configuration
 
@@ -97,18 +97,18 @@ Changing `GITX_STORE` selects a different store; it does not move the existing o
 | `GITX_STORE`   | Override the store path for an invocation |
 | `gitx.gitPath` | Select the Git executable                 |
 
-## Storage safety
+## Store dependency
 
-gitx is safe by default. Every checkout keeps its own complete set of Git objects and uses no Git alternates, so deleting the store never breaks a repository. Keep the store on the same filesystem as your checkouts so objects are hardlinked rather than copied.
+Cached checkouts depend on the object pool through Git alternates. Deleting or moving the store can make their history unreadable. The pool can be on a different filesystem.
 
-Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
+Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [store dependency guide](https://gitx.ben3d.ca/docs/safety) for details.
 
 ## Packages
 
 | Package                                                                  | Purpose                                                         |
 | ------------------------------------------------------------------------ | --------------------------------------------------------------- |
 | [@bhouston/gitx](https://www.npmjs.com/package/@bhouston/gitx)           | CLI interface, Git forwarding, and `gitx docgen` documentation  |
-| [@bhouston/gitx-core](https://www.npmjs.com/package/@bhouston/gitx-core) | Git operations, mirrors, and storage API                        |
+| [@bhouston/gitx-core](https://www.npmjs.com/package/@bhouston/gitx-core) | Git operations, object pool, and storage API                    |
 | [Website](https://github.com/bhouston/gitx/tree/main/packages/website)   | Docusaurus documentation and project site; not published to npm |
 
 For scripts and applications:
@@ -135,7 +135,7 @@ pnpm check
 pnpm test:proof
 ```
 
-`pnpm check` runs Oxlint, Oxfmt, TypeScript checks, Vitest, workflow tests, npm package checks, and the documentation build. CLI tests use `vitest-command-line`. The proof script creates temporary loopback Git remotes, verifies concurrent clones share object files, deletes the store, and checks that consumers remain valid.
+`pnpm check` runs Oxlint, Oxfmt, TypeScript checks, Vitest, workflow tests, npm package checks, and the documentation build. CLI tests use `vitest-command-line`. The proof script creates temporary loopback Git remotes and verifies that concurrent clones share one object pool and remain valid after pool maintenance.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [RELEASING.md](RELEASING.md) for release setup.
 
