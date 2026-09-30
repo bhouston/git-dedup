@@ -40,6 +40,12 @@ jobs:
       - run: pnpm format:check
       - run: pnpm test:workflow
       - run: pnpm test:coverage
+      - uses: codecov/codecov-action@v5
+        if: ${{ !cancelled() && hashFiles('coverage/lcov.info') != '' }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/lcov.info
+          fail_ci_if_error: false
       - run: pnpm test:proof
       - run: pnpm package:check
       - run: pnpm docs:build
