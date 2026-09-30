@@ -9,7 +9,7 @@ const packageInfo = JSON.parse(readFileSync(join(here, '../package.json'), 'utf8
   version: string;
   description: string;
 };
-const ownCommands = new Set(['cache', 'store', 'doctor', 'docgen']);
+const ownCommands = new Set(['store', 'doctor', 'docgen']);
 
 /** Run the git-dedup CLI. All Git commands retain their original argument array. */
 export async function main(args = process.argv.slice(2)): Promise<number> {

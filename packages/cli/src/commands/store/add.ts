@@ -1,16 +1,16 @@
 import type { ArgumentsCamelCase, Argv } from 'yargs';
-import type { CacheResult, StorageReport } from 'git-dedup-core';
-import { dedup } from '../context.js';
-import { printStorageReports } from '../stats.js';
-import { discoverCheckouts } from '../discover.js';
+import type { StoreAddResult, StorageReport } from 'git-dedup-core';
+import { dedup } from '../../context.js';
+import { printStorageReports } from '../../stats.js';
+import { discoverCheckouts } from '../../discover.js';
 
-export const command = 'cache [path]';
-export const describe = 'Adopt or relink a repository to the shared store';
+export const command = 'add [path]';
+export const describe = 'Add a local checkout to the shared store; linked checkouts depend on it';
 export const builder = (parser: Argv) =>
   parser
     .positional('path', {
       type: 'string',
-      describe: 'Repository path (defaults to the current directory)',
+      describe: 'Local checkout path (defaults to the current directory)',
     })
     .option('stats', {
       type: 'boolean',
@@ -20,12 +20,12 @@ export const builder = (parser: Argv) =>
     .option('all', {
       type: 'boolean',
       default: false,
-      describe: 'Discover and cache all checkouts under the directory',
+      describe: 'Discover and add all checkouts under the directory',
     })
     .option('dry-run', {
       type: 'boolean',
       default: false,
-      describe: 'Preview checkouts discovered by --all without caching',
+      describe: 'Preview checkouts discovered by --all without adding them',
     })
     .option('verbose', {
       type: 'boolean',
@@ -33,10 +33,10 @@ export const builder = (parser: Argv) =>
       describe: 'Show full Git errors for skipped and failed repositories',
     });
 
-function reportRepositories(result: CacheResult, verbose: boolean): void {
+function reportRepositories(result: StoreAddResult, verbose: boolean): void {
   for (const repository of result.repositories) {
     if (!repository.reason) continue;
-    const label = repository.status === 'cached' ? 'Warning' : repository.status === 'failed' ? 'Failed' : 'Skipped';
+    const label = repository.status === 'added' ? 'Warning' : repository.status === 'failed' ? 'Failed' : 'Skipped';
     console.error(`${label} ${repository.path}: ${repository.reason}`);
     if (verbose && repository.detail) console.error(repository.detail);
   }
@@ -55,7 +55,7 @@ export const handler = async (
       console.log(`  ${target.path}${target.coveredBy ? ` (submodule of ${target.coveredBy})` : ''}`);
     if (args.dryRun) return;
     const completed = new Set<string>();
-    let cached = 0;
+    let added = 0;
     let skipped = 0;
     let failed = 0;
     for (const target of targets) {
@@ -64,30 +64,30 @@ export const handler = async (
         continue;
       }
       try {
-        const result = await client.cache(target.path);
-        cached += result.cached;
+        const result = await client.add(target.path);
+        added += result.added;
         skipped += result.skipped;
         failed += result.failed;
         reportRepositories(result, args.verbose);
         completed.add(target.path);
         console.log(
-          `Finished ${target.path}: cached ${result.cached}, skipped ${result.skipped}, failed ${result.failed}`,
+          `Finished ${target.path}: added ${result.added}, skipped ${result.skipped}, failed ${result.failed}`,
         );
       } catch (error) {
         failed++;
         const detail = error instanceof Error ? error.message : String(error);
-        console.error(`Failed ${target.path}: cache operation failed`);
+        console.error(`Failed ${target.path}: store add operation failed`);
         if (args.verbose) console.error(detail);
       }
     }
-    console.log(`Cached ${cached} repository(s); skipped ${skipped}; failed ${failed}.`);
+    console.log(`Added ${added} repository(s); skipped ${skipped}; failed ${failed}.`);
     if (args.stats) printStorageReports(reports);
     if (failed) process.exitCode = 1;
     return;
   }
-  const result = await client.cache(args.path);
+  const result = await client.add(args.path);
   reportRepositories(result, args.verbose);
-  console.log(`Cached ${result.cached} repository(s); skipped ${result.skipped}; failed ${result.failed}.`);
+  console.log(`Added ${result.added} repository(s); skipped ${result.skipped}; failed ${result.failed}.`);
   if (args.stats) printStorageReports(reports);
   if (result.failed) process.exitCode = 1;
 };

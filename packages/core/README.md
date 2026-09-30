@@ -50,16 +50,16 @@ process.exitCode = exitCode;
 
 The returned methods are asynchronous:
 
-| Method         | Result and behavior                                                                                                                                                                                   |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `run(args)`    | Git exit code; optimizes supported operations                                                                                                                                                         |
-| `cache(path?)` | `{ cached, skipped, failed, repositories }`; adopts a repository and discoverable submodules, including local commits. Each repository reports its path, status, and any reason or full error detail. |
-| `storePath()`  | Resolved store path                                                                                                                                                                                   |
-| `storeInfo()`  | `{ path, sizeBytes, remoteCount }`                                                                                                                                                                    |
-| `fetch()`      | `{ fetched }`; fetches registered remotes into the pool                                                                                                                                               |
-| `gc()`         | `{ compacted }`; compacts the pool without pruning objects                                                                                                                                            |
-| `doctor()`     | `{ checks }`; each check has `name`, `ok`, and `detail`                                                                                                                                               |
-| `gitVersion()` | Underlying Git version line, such as `git version 2.50.1`                                                                                                                                             |
+| Method         | Result and behavior                                                                                                                                                                                  |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run(args)`    | Git exit code; optimizes supported operations                                                                                                                                                        |
+| `add(path?)`   | `{ added, skipped, failed, repositories }`; adopts a repository and discoverable submodules, including local commits. Each repository reports its path, status, and any reason or full error detail. |
+| `storePath()`  | Resolved store path                                                                                                                                                                                  |
+| `storeInfo()`  | `{ path, sizeBytes, remoteCount }`                                                                                                                                                                   |
+| `fetch()`      | `{ fetched }`; fetches registered remotes into the pool                                                                                                                                              |
+| `gc()`         | `{ compacted }`; compacts the pool without pruning objects                                                                                                                                           |
+| `doctor()`     | `{ checks }`; each check has `name`, `ok`, and `detail`                                                                                                                                              |
+| `gitVersion()` | Underlying Git version line, such as `git version 2.50.1`                                                                                                                                            |
 
 ### Consolidate an existing repository
 
@@ -67,8 +67,8 @@ The returned methods are asynchronous:
 import { createGitDedup } from 'git-dedup-core';
 
 const dedup = createGitDedup({ cwd: process.cwd() });
-const { cached, skipped, failed, repositories } = await dedup.cache('./git-dedup-checkout');
-console.log({ cached, skipped, failed, repositories });
+const { added, skipped, failed, repositories } = await dedup.add('./git-dedup-checkout');
+console.log({ added, skipped, failed, repositories });
 console.log(await dedup.storeInfo());
 ```
 
@@ -91,10 +91,10 @@ const dedup = createGitDedup({
   },
 });
 
-await dedup.cache('./git-dedup-checkout');
+await dedup.add('./git-dedup-checkout');
 ```
 
-The callback enables metadata scans after optimized clones and checkout adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for checkout adoption. The package exports `GitDedupOptions`, `StorageReport`, `StoreInfo`, `CacheResult`, `DoctorCheck`, and `DoctorResult` types.
+The callback enables metadata scans after optimized clones and checkout adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for checkout adoption. The package exports `GitDedupOptions`, `StorageReport`, `StoreInfo`, `StoreAddResult`, `DoctorCheck`, and `DoctorResult` types.
 
 Adoption estimates count the reduction in private pack bytes. Counts cover `.pack`, `.idx`, and `.rev` files, excluding loose objects. They measure logical file sizes, not physical disk blocks reclaimed. Clone reports do not estimate savings.
 

@@ -13,11 +13,11 @@ export interface GitDedupOptions {
   onStorageReport?: (report: StorageReport) => void;
 }
 export interface StorageReport {
-  operation: 'clone' | 'cache';
+  operation: 'clone' | 'add';
   repository: string;
   poolReused: boolean;
   estimatedSavedBytes: number;
-  /** Logical bytes in private pack files before/after cache adoption. Loose objects are excluded. */
+  /** Logical bytes in private pack files before/after checkout adoption. Loose objects are excluded. */
   beforeUniqueBytes?: number;
   afterUniqueBytes?: number;
 }
@@ -38,21 +38,21 @@ export interface DoctorCheck {
 export interface DoctorResult {
   checks: DoctorCheck[];
 }
-export interface CacheResult {
-  cached: number;
+export interface StoreAddResult {
+  added: number;
   skipped: number;
   failed: number;
-  repositories: CacheRepositoryResult[];
+  repositories: StoreAddRepositoryResult[];
 }
-export interface CacheRepositoryResult {
+export interface StoreAddRepositoryResult {
   path: string;
-  status: 'cached' | 'skipped' | 'failed';
+  status: 'added' | 'skipped' | 'failed';
   reason?: string;
   /** Full underlying error for diagnostic output. */
   detail?: string;
 }
 
-function cacheFailureReason(error: unknown, stage: string): string {
+function addFailureReason(error: unknown, stage: string): string {
   const message = String(error);
   if (/cannot lock ref|reference already exists|case.insensitive|refname collision/i.test(message))
     return 'ref collision in the shared pool';
@@ -513,7 +513,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
 
   async function pinConsumer(pool: string, repo: string, commonGitdir: string, tips: string[]): Promise<void> {
     // Immutable snapshots keep old tips reachable after force pushes, branch
-    // deletion, or a later cache call on the same checkout. Source ref names
+    // deletion, or a later store add call on the same checkout. Source ref names
     // cannot be copied into a files-backed pool: refs differing only by case
     // collide on case-insensitive filesystems. Object IDs are safe ref names,
     // and one pin per distinct tip preserves the same reachability.
@@ -628,9 +628,9 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       const target = args.length === 2 ? defaultCloneName(args[1]!) : args.length === 3 ? args[2] : undefined;
       if (target && !target.startsWith('-')) {
         try {
-          await cache(resolve(at, target));
+          await add(resolve(at, target));
         } catch (error) {
-          process.stderr.write(`git-dedup: submodule cache unavailable (${String(error)})\n`);
+          process.stderr.write(`git-dedup: submodule adoption unavailable (${String(error)})\n`);
         }
       }
       return 0;
@@ -646,7 +646,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     try {
       await seedSubmodules(at);
     } catch {
-      process.stderr.write('git-dedup: submodule cache unavailable; using Git\n');
+      process.stderr.write('git-dedup: submodule adoption unavailable; using Git\n');
     }
     const recursive =
       args.includes('--recursive') &&
@@ -668,10 +668,15 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return 0;
   }
 
-  async function cache(path = cwd): Promise<CacheResult> {
-    const result: CacheResult = { cached: 0, skipped: 0, failed: 0, repositories: [] };
+  async function add(path = cwd): Promise<StoreAddResult> {
+    const result: StoreAddResult = { added: 0, skipped: 0, failed: 0, repositories: [] };
     const visited = new Set<string>();
-    function record(repoPath: string, status: CacheRepositoryResult['status'], reason?: string, detail?: string): void {
+    function record(
+      repoPath: string,
+      status: StoreAddRepositoryResult['status'],
+      reason?: string,
+      detail?: string,
+    ): void {
       result[status]++;
       result.repositories.push({
         path: repoPath,
@@ -730,19 +735,19 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           const currentPins = stateMatches ? await pinnedTips(pool, await consumerId(commonGitdir)) : undefined;
           if (currentPins && tips.every((oid) => currentPins.has(oid))) {
             record(repo, 'skipped', 'already current');
-            process.stderr.write(`git-dedup: caching ${repo}: already current\n`);
+            process.stderr.write(`git-dedup: adding ${repo}: already current\n`);
             return;
           }
-          process.stderr.write(`git-dedup: caching ${repo}: packing local objects\n`);
+          process.stderr.write(`git-dedup: adding ${repo}: packing local objects\n`);
           // Gather loose local objects before adding an alternate; afterwards Git may
           // consider a local object redundant and omit it from a new pack.
           if (!alreadyLinked) await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
           const beforeUniqueBytes = await uniquePackBytes(commonGitdir);
-          process.stderr.write(`git-dedup: caching ${repo}: importing refs\n`);
+          process.stderr.write(`git-dedup: adding ${repo}: importing refs\n`);
           stage = 'importing refs';
           await pinConsumer(pool, repo, commonGitdir, tips);
           stage = 'sharing objects';
-          process.stderr.write(`git-dedup: caching ${repo}: sharing objects\n`);
+          process.stderr.write(`git-dedup: adding ${repo}: sharing objects\n`);
           await setAlternate(commonGitdir, pool);
           await removeLegacyKeeps(commonGitdir);
           await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
@@ -764,7 +769,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           if (options.onStorageReport) {
             const afterUniqueBytes = await uniquePackBytes(commonGitdir);
             emitStorageReport({
-              operation: 'cache',
+              operation: 'add',
               repository: repo,
               poolReused,
               beforeUniqueBytes,
@@ -774,17 +779,17 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           }
           record(
             repo,
-            'cached',
+            'added',
             refreshError ? 'remote refresh deferred; retry with git-dedup store fetch' : undefined,
             refreshError ? String(refreshError) : undefined,
           );
           if (refreshError)
             process.stderr.write(
-              `git-dedup: caching ${repo}: remote refresh deferred; retry with git-dedup store fetch\n`,
+              `git-dedup: adding ${repo}: remote refresh deferred; retry with git-dedup store fetch\n`,
             );
         });
       } catch (error) {
-        record(repo, 'failed', cacheFailureReason(error, stage), String(error));
+        record(repo, 'failed', addFailureReason(error, stage), String(error));
       } finally {
         await visitModules(join(gitdir, 'modules'));
       }
@@ -965,7 +970,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return result.stdout.trim();
   }
 
-  return { run, cache, storeInfo, listRemotes, fetch, gc, doctor, storePath, gitVersion };
+  return { run, add, storeInfo, listRemotes, fetch, gc, doctor, storePath, gitVersion };
 }
 
 function processExists(pid: number): boolean {

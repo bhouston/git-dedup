@@ -24,7 +24,7 @@ export interface DiscoveredCheckout {
   path: string;
   gitDir: string;
   commonGitDir: string;
-  /** The parent repository whose cache operation visits this initialized submodule. */
+  /** The parent repository whose store add operation visits this initialized submodule. */
   coveredBy?: string;
 }
 

@@ -41,11 +41,11 @@ git-dedup worktree add -b review ../review
 
 ```sh
 # Add the current repository to the store.
-git-dedup cache .
+git-dedup store add .
 
 # Preview every checkout below a directory before adopting them.
-git-dedup cache ~/Coding --all --dry-run
-git-dedup cache ~/Coding --all
+git-dedup store add ~/Coding --all --dry-run
+git-dedup store add ~/Coding --all
 
 # View the store.
 git-dedup store
