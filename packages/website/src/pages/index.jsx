@@ -16,7 +16,7 @@ const cards = [
   },
   {
     number: '03',
-    title: 'A safe way back',
+    title: 'Git command passthrough',
     body: 'Commands outside the supported path run through Git. Your existing Git workflow stays available.',
   },
 ];
@@ -142,7 +142,7 @@ git log --oneline`}</code>
         <section className={styles.note}>
           <strong>Keep the pool available.</strong>
           <span>Cached checkouts borrow Git objects from the pool. Removing it can make their history unreadable.</span>
-          <Link to="/docs/safety">Read the safety model →</Link>
+          <Link to="/docs/safety">Read about the store dependency →</Link>
         </section>
       </main>
     </Layout>

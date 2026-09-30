@@ -99,11 +99,11 @@ Changing `GITX_STORE` selects a different store; it does not move the existing o
 | `GITX_STORE`   | Override the store path for an invocation |
 | `gitx.gitPath` | Select the Git executable                 |
 
-## Storage safety
+## Store dependency
 
-Cached checkouts depend on the object pool through Git alternates. Do not delete or move the store while they are in use. To make a checkout independent, run `git repack -a -d` in it, then remove its `objects/info/alternates` file. The pool can be on a different filesystem.
+Cached checkouts depend on the object pool through Git alternates. Deleting or moving the store can make their history unreadable. The pool can be on a different filesystem.
 
-Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
+Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [store dependency guide](https://gitx.ben3d.ca/docs/safety) for details.
 
 ## Command documentation and agents
 

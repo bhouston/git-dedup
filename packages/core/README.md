@@ -70,7 +70,7 @@ console.log({ cached, skipped });
 console.log(await gitx.storeInfo());
 ```
 
-Cache adoption is repeatable and preserves local commits.
+Cache adoption imports local refs and HEAD into the pool before repacking the checkout.
 
 ### Observe storage sharing
 
@@ -100,11 +100,11 @@ Cache estimates count the reduction in private pack bytes. Counts cover `.pack`,
 
 The store defaults to `~/.cache/gitx`; `GITX_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `gitx.gitPath`. The pool can be on a different filesystem from the checkout. gitx does not change global Git configuration.
 
-## Storage safety
+## Store dependency
 
-Cached checkouts depend on the object pool through Git alternates. Do not delete or move the store while they are in use. To make a checkout independent, run `git repack -a -d` in it, then remove its `objects/info/alternates` file.
+Cached checkouts depend on the object pool through Git alternates. Deleting or moving the store can make their history unreadable.
 
-Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [safety guide](https://gitx.ben3d.ca/docs/safety) for details.
+Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [store dependency guide](https://gitx.ben3d.ca/docs/safety) for details.
 
 ## Contributing
 
