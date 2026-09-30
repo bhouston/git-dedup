@@ -1,28 +1,28 @@
 {
-  "name": "@bhouston/gitx",
+  "name": "git-dedup",
   "version": "0.1.0",
   "description": "A Git wrapper that shares repository object storage",
   "keywords": [
-    "cache",
     "cli",
     "clone",
     "coding-agents",
     "git",
     "git-wrapper",
     "object-pool",
+    "shared-storage",
     "submodule",
     "vscode",
     "worktree"
   ],
-  "homepage": "https://gitx.ben3d.ca",
+  "homepage": "https://git-dedup.ben3d.ca",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bhouston/gitx.git",
+    "url": "git+https://github.com/bhouston/git-dedup.git",
     "directory": "packages/cli"
   },
   "bin": {
-    "gitx": "./dist/bin.js"
+    "git-dedup": "./dist/bin.js"
   },
   "files": [
     "dist",
@@ -46,9 +46,9 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "dependencies": {
-    "@bhouston/gitx-core": "workspace:*",
     "@clidoc/core": "^0.1.0",
     "@clidoc/yargs": "^1.1.0",
+    "git-dedup-core": "workspace:*",
     "yargs": "^18.0.0",
     "yargs-file-commands": "^2.1.0"
   },

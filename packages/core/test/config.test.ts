@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promi
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createGitx } from '../src/index.js';
+import { createGitDedup } from '../src/index.js';
 
 const roots: string[] = [];
 afterEach(async () => {
@@ -19,24 +19,35 @@ async function fixture() {
     ...process.env,
     GIT_CONFIG_GLOBAL: config,
     GIT_CONFIG_NOSYSTEM: '1',
-    GITX_STORE: store,
+    GIT_DEDUP_STORE: store,
+    GITX_STORE: undefined,
+    GIT_DEDUP_ACTIVE: undefined,
     GITX_ACTIVE: undefined,
   };
-  return { root, config, store, env, api: createGitx({ cwd: root, env }) };
+  return { root, config, store, env, api: createGitDedup({ cwd: root, env }) };
 }
 
-it('uses only the default or environment store and ignores Git store configuration', async () => {
+it('uses the new default, preserves legacy stores, and respects explicit overrides', async () => {
   const { root, config, store, env, api } = await fixture();
   vi.stubEnv('HOME', root);
   await writeFile(config, `[gitx]\n store = ${join(root, 'legacy')}\n`);
   const before = await readFile(config, 'utf8');
   expect(await api.storePath()).toBe(store);
-  const defaults = createGitx({ cwd: root, env: { ...env, GITX_STORE: undefined } });
+  const defaults = createGitDedup({ cwd: root, env: { ...env, GIT_DEDUP_STORE: undefined } });
+  expect(await defaults.storePath()).toBe(join(root, '.git-dedup'));
+  await mkdir(join(root, '.gitx'));
   expect(await defaults.storePath()).toBe(join(root, '.gitx'));
   await mkdir(join(root, '.cache', 'gitx'), { recursive: true });
   expect(await defaults.storePath()).toBe(join(root, '.cache', 'gitx'));
-  const relative = createGitx({ cwd: root, env: { ...env, GITX_STORE: 'custom-store' } });
+  const relative = createGitDedup({ cwd: root, env: { ...env, GIT_DEDUP_STORE: 'custom-store' } });
   expect(await relative.storePath()).toBe(join(root, 'custom-store'));
+  const oldOverride = createGitDedup({
+    cwd: root,
+    env: { ...env, GIT_DEDUP_STORE: undefined, GITX_STORE: 'old-store' },
+  });
+  expect(await oldOverride.storePath()).toBe(join(root, 'old-store'));
+  const newWins = createGitDedup({ cwd: root, env: { ...env, GIT_DEDUP_STORE: 'new-store', GITX_STORE: 'old-store' } });
+  expect(await newWins.storePath()).toBe(join(root, 'new-store'));
   expect(await readFile(config, 'utf8')).toBe(before);
 });
 
@@ -49,10 +60,14 @@ it('doctor reports checks and never changes global Git configuration', async () 
   expect(await readFile(config, 'utf8')).toBe(before);
 });
 
-it('uses gitx.gitPath from Git configuration', async () => {
+it('uses git-dedup.gitPath from Git configuration and accepts the old setting', async () => {
   const { config, env, root } = await fixture();
   const binary = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
-  await writeFile(config, `[gitx]\n gitPath = ${binary}\n`);
-  const api = createGitx({ cwd: root, env });
+  await writeFile(config, `[git-dedup]\n gitPath = ${binary}\n`);
+  const api = createGitDedup({ cwd: root, env });
   expect((await api.doctor()).checks.find((check) => check.name === 'git')?.detail).toContain(binary);
+  await writeFile(config, `[gitx]\n gitPath = ${binary}\n`);
+  expect(
+    (await createGitDedup({ cwd: root, env }).doctor()).checks.find((check) => check.name === 'git')?.detail,
+  ).toContain(binary);
 });

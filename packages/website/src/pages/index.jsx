@@ -36,15 +36,15 @@ export default function Home() {
               <em>Store once.</em>
             </h1>
             <p className={styles.lead}>
-              gitx collects Git objects from many remotes in one local pool. Supported checkouts borrow them through Git
-              alternates, reducing duplicate storage across clones and forks.
+              git-dedup collects Git objects from many remotes in one local pool. Supported checkouts borrow them
+              through Git alternates, reducing duplicate storage across clones and forks.
             </p>
             <pre className={styles.example}>
-              <code>{`# Populate the object pool in ~/.gitx.
-gitx clone https://github.com/you/project.git project
+              <code>{`# Populate the object pool in ~/.git-dedup.
+git-dedup clone https://github.com/you/project.git project
 
 # Another checkout borrows objects from the same pool.
-gitx clone https://github.com/you/project.git project-review
+git-dedup clone https://github.com/you/project.git project-review
 cd project-review
 
 # All normal Git commands work in the checkout.
@@ -54,8 +54,8 @@ git log --oneline`}</code>
             </pre>
             <p className={styles.performance}>
               In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees
-              counted once), gitx uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about
-              24.4 GB (69%).
+              counted once), git-dedup uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving
+              about 24.4 GB (69%).
             </p>
             <div className={styles.actions}>
               <Link className={styles.primary} to="/docs">
@@ -81,7 +81,7 @@ git log --oneline`}</code>
           </div>
           <p>
             Development often means several copies of the same repository: separate tasks, agents, experiments, and
-            worktrees. gitx <strong>automatically</strong> puts reusable Git objects in a local store and keeps the
+            worktrees. git-dedup <strong>automatically</strong> puts reusable Git objects in a local store and keeps the
             consumer repositories connected to it through Git alternates. It manages remote updates and reference paths
             for you.
           </p>
@@ -100,8 +100,8 @@ git log --oneline`}</code>
             <p className={styles.kicker}>BUILT ON GIT</p>
             <h2>Start with one clone.</h2>
             <p>
-              Try gitx on a remote repository, inspect the resulting origin, and compare the object files in the clone
-              and store.
+              Try git-dedup on a remote repository, inspect the resulting origin, and compare the object files in the
+              clone and store.
             </p>
             <Link to="/docs">Read the getting started guide →</Link>
           </div>
@@ -143,7 +143,7 @@ git log --oneline`}</code>
         </section>
         <section className={styles.note}>
           <strong>Keep the pool available.</strong>
-          <span>Cached checkouts borrow Git objects from the pool. Removing it can make their history unreadable.</span>
+          <span>Linked checkouts borrow Git objects from the pool. Removing it can make their history unreadable.</span>
           <Link to="/docs/safety">Read about the store dependency →</Link>
         </section>
       </main>

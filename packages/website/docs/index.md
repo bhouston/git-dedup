@@ -4,22 +4,24 @@ title: Get started
 slug: /
 ---
 
-Install gitx with npm:
+Install git-dedup with npm:
 
 ```sh
-npm install -g @bhouston/gitx
+npm install -g git-dedup
 ```
 
 Requires Node.js 22+ and Git on macOS or Linux.
 
+If you used the previous `gitx` CLI, update scripts and editor settings to call `git-dedup`. Existing stores and linked checkouts continue to work; git-dedup finds an existing store automatically.
+
 ## Clone a repository
 
 ```sh
-# Automatically create or reuse the object pool in ~/.gitx.
-gitx clone https://github.com/you/project.git project
+# Automatically create or reuse the object pool in ~/.git-dedup.
+git-dedup clone https://github.com/you/project.git project
 
 # Borrow from the pool for another checkout.
-gitx clone https://github.com/you/project.git project-review
+git-dedup clone https://github.com/you/project.git project-review
 cd project-review
 
 # Work with Git as usual.
@@ -31,23 +33,23 @@ git log --oneline
 ## Submodules and worktrees
 
 ```sh
-gitx submodule update --init --recursive
-gitx worktree add -b review ../review
+git-dedup submodule update --init --recursive
+git-dedup worktree add -b review ../review
 ```
 
 ## Existing repositories
 
 ```sh
 # Add the current repository to the store.
-gitx cache .
+git-dedup cache .
 
-# Preview every checkout below a directory before caching them.
-gitx cache ~/Coding --all --dry-run
-gitx cache ~/Coding --all
+# Preview every checkout below a directory before adopting them.
+git-dedup cache ~/Coding --all --dry-run
+git-dedup cache ~/Coding --all
 
 # View the store.
-gitx store
-gitx store list
+git-dedup store
+git-dedup store list
 ```
 
 See the [CLI reference](/docs/cli) for commands or [agent setup](./agents.md) for coding agents.

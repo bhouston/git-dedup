@@ -6,7 +6,7 @@ import { homedir, constants as osConstants } from 'node:os';
 import { basename, delimiter, dirname, join, resolve, sep } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 
-export interface GitxOptions {
+export interface GitDedupOptions {
   cwd?: string;
   env?: NodeJS.ProcessEnv;
   gitPath?: string;
@@ -254,8 +254,8 @@ async function lockDirectory<T>(lock: string, action: () => Promise<T>): Promise
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      if (attempts > 1200) throw new Error(`Timed out waiting for gitx lock: ${lock}`, { cause: error });
-      if (attempts === 20) process.stderr.write('gitx: waiting for the object pool lock\n');
+      if (attempts > 1200) throw new Error(`Timed out waiting for git-dedup lock: ${lock}`, { cause: error });
+      if (attempts === 20) process.stderr.write('git-dedup: waiting for the object pool lock\n');
       const owner = Number((await readFile(join(lock, 'owner'), 'utf8').catch(() => '')).trim());
       const age = Date.now() - (await stat(lock).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs;
       // A dead owner may be reaped. A live but slow Git process must never lose its lock.
@@ -281,7 +281,8 @@ async function initializeStore(root: string): Promise<void> {
   await mkdir(root, { recursive: true });
   const marker = join(root, '.gitx-store');
   if (await isPresent(marker)) {
-    if ((await readFile(marker, 'utf8')) !== 'gitx-store-v2\n') throw new Error(`Invalid gitx store marker: ${root}`);
+    if ((await readFile(marker, 'utf8')) !== 'gitx-store-v2\n')
+      throw new Error(`Invalid git-dedup store marker: ${root}`);
     return;
   }
   if ((await readdir(root)).length) throw new Error(`Refusing to adopt a nonempty directory as a store: ${root}`);
@@ -349,16 +350,16 @@ async function consumerId(commonGitdir: string): Promise<string> {
   }
 }
 
-export function createGitx(options: GitxOptions = {}) {
+export function createGitDedup(options: GitDedupOptions = {}) {
   const cwd = resolve(options.cwd ?? process.cwd());
   const incomingEnv: NodeJS.ProcessEnv = { ...process.env, ...options.env };
-  const env: NodeJS.ProcessEnv = { ...incomingEnv, GITX_ACTIVE: '1' };
+  const env: NodeJS.ProcessEnv = { ...incomingEnv, GITX_ACTIVE: '1', GIT_DEDUP_ACTIVE: '1' };
   let cachedGit: string | undefined;
   function emitStorageReport(report: StorageReport): void {
     try {
       options.onStorageReport?.(report);
     } catch {
-      process.stderr.write('gitx: storage report callback failed\n');
+      process.stderr.write('git-dedup: storage report callback failed\n');
     }
   }
   const hasRepositoryEnvironment = [
@@ -390,14 +391,20 @@ export function createGitx(options: GitxOptions = {}) {
         }
       }
       if (!candidate) throw new Error('Real Git executable not found on PATH');
-      const configured = await promisify(execFile)(candidate, ['config', '--get', 'gitx.gitPath'], { cwd, env }).then(
-        (result) => result.stdout.trim(),
-        () => '',
-      );
+      const configured =
+        (await promisify(execFile)(candidate, ['config', '--get', 'git-dedup.gitPath'], { cwd, env }).then(
+          (result) => result.stdout.trim(),
+          () => '',
+        )) ||
+        (await promisify(execFile)(candidate, ['config', '--get', 'gitx.gitPath'], { cwd, env }).then(
+          (result) => result.stdout.trim(),
+          () => '',
+        ));
       if (configured) candidate = resolve(cwd, expandHome(configured));
     }
     const actual = await realpath(candidate).catch(() => '');
-    if (!actual || actual === own) throw new Error('gitx.gitPath must point to a real Git executable, not gitx itself');
+    if (!actual || actual === own)
+      throw new Error('git-dedup.gitPath must point to a real Git executable, not git-dedup itself');
     await access(candidate, constants.X_OK);
     return (cachedGit = candidate);
   }
@@ -437,16 +444,22 @@ export function createGitx(options: GitxOptions = {}) {
 
   async function checked(args: string[], at = cwd): Promise<string> {
     if (hasRepositoryEnvironment)
-      throw new Error('Unset Git repository override environment variables before running gitx storage operations');
+      throw new Error(
+        'Unset Git repository override environment variables before running git-dedup storage operations',
+      );
     const result = await git(args, at);
     if (result.code !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim()}`);
     return result.stdout.trim();
   }
 
   async function storePath(): Promise<string> {
-    if (env.GITX_STORE) return canonicalPath(resolve(cwd, expandHome(env.GITX_STORE)));
-    const legacy = expandHome('~/.cache/gitx');
-    return canonicalPath((await isPresent(legacy)) ? legacy : expandHome('~/.gitx'));
+    const configured = env.GIT_DEDUP_STORE || env.GITX_STORE;
+    if (configured) return canonicalPath(resolve(cwd, expandHome(configured)));
+    for (const legacy of ['~/.cache/gitx', '~/.gitx']) {
+      const path = expandHome(legacy);
+      if (await isPresent(path)) return canonicalPath(path);
+    }
+    return canonicalPath(expandHome('~/.git-dedup'));
   }
 
   async function ensurePool(root: string): Promise<string> {
@@ -472,7 +485,7 @@ export function createGitx(options: GitxOptions = {}) {
 
   async function fetchRemoteObjects(pool: string, remote: string, key: string): Promise<void> {
     const id = remoteId(key);
-    process.stderr.write(`gitx: updating object pool for ${key}\n`);
+    process.stderr.write(`git-dedup: updating object pool for ${key}\n`);
     await checked([
       '-C',
       pool,
@@ -552,7 +565,7 @@ export function createGitx(options: GitxOptions = {}) {
       try {
         pool = await fetchRemote(root, parsed.remote, key);
       } catch {
-        process.stderr.write('gitx: object pool unavailable; using Git clone\n');
+        process.stderr.write('git-dedup: object pool unavailable; using Git clone\n');
         return undefined;
       }
       const cloneArgs = ['clone', '--reference', pool, ...parsed.forwarded, parsed.remote, destination];
@@ -617,7 +630,7 @@ export function createGitx(options: GitxOptions = {}) {
         try {
           await cache(resolve(at, target));
         } catch (error) {
-          process.stderr.write(`gitx: submodule cache unavailable (${String(error)})\n`);
+          process.stderr.write(`git-dedup: submodule cache unavailable (${String(error)})\n`);
         }
       }
       return 0;
@@ -633,7 +646,7 @@ export function createGitx(options: GitxOptions = {}) {
     try {
       await seedSubmodules(at);
     } catch {
-      process.stderr.write('gitx: submodule cache unavailable; using Git\n');
+      process.stderr.write('git-dedup: submodule cache unavailable; using Git\n');
     }
     const recursive =
       args.includes('--recursive') &&
@@ -717,19 +730,19 @@ export function createGitx(options: GitxOptions = {}) {
           const currentPins = stateMatches ? await pinnedTips(pool, await consumerId(commonGitdir)) : undefined;
           if (currentPins && tips.every((oid) => currentPins.has(oid))) {
             record(repo, 'skipped', 'already current');
-            process.stderr.write(`gitx: caching ${repo}: already current\n`);
+            process.stderr.write(`git-dedup: caching ${repo}: already current\n`);
             return;
           }
-          process.stderr.write(`gitx: caching ${repo}: packing local objects\n`);
+          process.stderr.write(`git-dedup: caching ${repo}: packing local objects\n`);
           // Gather loose local objects before adding an alternate; afterwards Git may
           // consider a local object redundant and omit it from a new pack.
           if (!alreadyLinked) await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
           const beforeUniqueBytes = await uniquePackBytes(commonGitdir);
-          process.stderr.write(`gitx: caching ${repo}: importing refs\n`);
+          process.stderr.write(`git-dedup: caching ${repo}: importing refs\n`);
           stage = 'importing refs';
           await pinConsumer(pool, repo, commonGitdir, tips);
           stage = 'sharing objects';
-          process.stderr.write(`gitx: caching ${repo}: sharing objects\n`);
+          process.stderr.write(`git-dedup: caching ${repo}: sharing objects\n`);
           await setAlternate(commonGitdir, pool);
           await removeLegacyKeeps(commonGitdir);
           await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
@@ -762,11 +775,13 @@ export function createGitx(options: GitxOptions = {}) {
           record(
             repo,
             'cached',
-            refreshError ? 'remote refresh deferred; retry with gitx store fetch' : undefined,
+            refreshError ? 'remote refresh deferred; retry with git-dedup store fetch' : undefined,
             refreshError ? String(refreshError) : undefined,
           );
           if (refreshError)
-            process.stderr.write(`gitx: caching ${repo}: remote refresh deferred; retry with gitx store fetch\n`);
+            process.stderr.write(
+              `git-dedup: caching ${repo}: remote refresh deferred; retry with git-dedup store fetch\n`,
+            );
         });
       } catch (error) {
         record(repo, 'failed', cacheFailureReason(error, stage), String(error));
@@ -818,7 +833,7 @@ export function createGitx(options: GitxOptions = {}) {
             typeof value.remote !== 'string' ||
             `${remoteId(value.key)}.json` !== name
           )
-            throw new Error(`Invalid gitx remote registration: ${name}`);
+            throw new Error(`Invalid git-dedup remote registration: ${name}`);
           return { key: value.key, remote: value.remote };
         }),
     );
@@ -919,7 +934,7 @@ export function createGitx(options: GitxOptions = {}) {
 
   async function run(args: string[]): Promise<number> {
     const parsed = parseGlobal(args, cwd);
-    if (incomingEnv.GITX_ACTIVE === '1' || hasRepositoryEnvironment || !parsed)
+    if (incomingEnv.GITX_ACTIVE === '1' || incomingEnv.GIT_DEDUP_ACTIVE === '1' || hasRepositoryEnvironment || !parsed)
       return (await git(args, cwd, true)).code;
     // -C is resolved explicitly. Other global options can change Git semantics, so forward intact.
     for (let i = 0; i < parsed.prefix.length; i++) {
@@ -932,7 +947,7 @@ export function createGitx(options: GitxOptions = {}) {
       return (await git(args, cwd, true)).code;
     }
     if (parsed.cwd !== cwd) {
-      return createGitx({ ...options, cwd: parsed.cwd, env: incomingEnv }).run([parsed.command, ...parsed.rest]);
+      return createGitDedup({ ...options, cwd: parsed.cwd, env: incomingEnv }).run([parsed.command, ...parsed.rest]);
     }
     if (parsed.command === 'clone') {
       const handled = await clone(parsed.rest, parsed.cwd);

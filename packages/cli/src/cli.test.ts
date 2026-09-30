@@ -10,12 +10,12 @@ import { commandLine, extendMatchers } from 'vitest-command-line';
 extendMatchers();
 
 const bin = new URL('../dist/bin.js', import.meta.url).pathname;
-const cli = commandLine({ command: ['node', bin], name: 'gitx' });
+const cli = commandLine({ command: ['node', bin], name: 'git-dedup' });
 const dirs: string[] = [];
 const daemons: ChildProcess[] = [];
 
 async function fixture(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'gitx-cli-'));
+  const dir = await mkdtemp(join(tmpdir(), 'git-dedup-cli-'));
   dirs.push(dir);
   return dir;
 }
@@ -25,7 +25,7 @@ function isolatedEnv(dir: string): NodeJS.ProcessEnv {
     ...process.env,
     GIT_CONFIG_GLOBAL: join(dir, 'global.gitconfig'),
     GIT_CONFIG_SYSTEM: join(dir, 'system.gitconfig'),
-    GITX_STORE: join(dir, 'store'),
+    GIT_DEDUP_STORE: join(dir, 'store'),
   };
 }
 
@@ -96,7 +96,7 @@ async function gitRemoteFixture(): Promise<{ dir: string; remote: string }> {
   return { dir, remote: `git://127.0.0.1:${port}/team/project.git` };
 }
 
-describe('gitx CLI', () => {
+describe('git-dedup CLI', () => {
   it('shows its commands and version', async () => {
     const help = await cli.run(['--help']);
     expect(help).toSucceed();
@@ -105,8 +105,8 @@ describe('gitx CLI', () => {
 
     const version = await cli.run(['--version']);
     expect(version).toSucceed();
-    // Editors that use gitx as git.path read the leading Git version.
-    expect(version).toHaveStdout(/^git version \d+\.\d+\S* .*\(gitx 0\.1\.0\)\n?$/);
+    // Editors that use git-dedup as git.path read the leading Git version.
+    expect(version).toHaveStdout(/^git version \d+\.\d+\S* .*\(git-dedup 0\.1\.0\)\n?$/);
   });
 
   it('generates the OpenCLI document', async () => {
@@ -118,25 +118,25 @@ describe('gitx CLI', () => {
       commands: Record<string, unknown>;
     }>();
     expect(validate(doc)).toMatchObject({ valid: true });
-    expect(doc.info.title).toBe('gitx');
+    expect(doc.info.title).toBe('git-dedup');
     expect(doc.global.flags).toContainEqual(expect.objectContaining({ name: 'stats' }));
-    expect(doc.commands).toHaveProperty('gitx clone');
-    expect(doc.commands).toHaveProperty('gitx store');
-    expect(doc.commands).toHaveProperty('gitx store fetch');
-    expect(doc.commands).toHaveProperty('gitx store list');
-    expect(doc.commands).not.toHaveProperty('gitx store refresh');
-    expect(doc.commands).toHaveProperty('gitx store gc');
-    expect(doc.commands).not.toHaveProperty('gitx store clear');
-    expect(doc.commands).not.toHaveProperty('gitx store set');
+    expect(doc.commands).toHaveProperty('git-dedup clone');
+    expect(doc.commands).toHaveProperty('git-dedup store');
+    expect(doc.commands).toHaveProperty('git-dedup store fetch');
+    expect(doc.commands).toHaveProperty('git-dedup store list');
+    expect(doc.commands).not.toHaveProperty('git-dedup store refresh');
+    expect(doc.commands).toHaveProperty('git-dedup store gc');
+    expect(doc.commands).not.toHaveProperty('git-dedup store clear');
+    expect(doc.commands).not.toHaveProperty('git-dedup store set');
   });
 
   it('generates documentation for nested store commands', async () => {
     const result = await cli.run(['docgen', '--format', 'markdown']);
     expect(result).toSucceed();
-    expect(result).toHaveStdout('## gitx store fetch');
-    expect(result).toHaveStdout('## gitx store list');
-    expect(result).toHaveStdout('## gitx store gc');
-    expect(result).not.toHaveStdout('## gitx store set');
+    expect(result).toHaveStdout('## git-dedup store fetch');
+    expect(result).toHaveStdout('## git-dedup store list');
+    expect(result).toHaveStdout('## git-dedup store gc');
+    expect(result).not.toHaveStdout('## git-dedup store set');
   });
 
   it('fetches registered remotes and rejects the removed refresh command', async () => {
@@ -296,7 +296,7 @@ describe('gitx CLI', () => {
 
     const native = await commandLine({ command: ['git'], name: 'git' }).run(['clone', remote, 'consumer'], options);
     expect(native).toSucceed();
-    const badStoreOptions = { ...options, env: { ...options.env, GITX_STORE: join(dir, 'source') } };
+    const badStoreOptions = { ...options, env: { ...options.env, GIT_DEDUP_STORE: join(dir, 'source') } };
     const failed = await cli.run(['cache', 'consumer'], badStoreOptions);
     expect(failed).toFail();
     expect(failed).toHaveStderr(/Failed .*consumer: Git storage operation failed/);

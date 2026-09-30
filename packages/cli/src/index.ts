@@ -1,8 +1,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { createGitx } from '@bhouston/gitx-core';
-import type { StorageReport } from '@bhouston/gitx-core';
+import { createGitDedup } from 'git-dedup-core';
+import type { StorageReport } from 'git-dedup-core';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const packageInfo = JSON.parse(readFileSync(join(here, '../package.json'), 'utf8')) as {
@@ -11,15 +11,15 @@ const packageInfo = JSON.parse(readFileSync(join(here, '../package.json'), 'utf8
 };
 const ownCommands = new Set(['cache', 'store', 'doctor', 'docgen']);
 
-/** Run the gitx CLI. All Git commands retain their original argument array. */
+/** Run the git-dedup CLI. All Git commands retain their original argument array. */
 export async function main(args = process.argv.slice(2)): Promise<number> {
   const stats = args[0] === '--stats';
   const forwardedArgs = stats ? args.slice(1) : args;
   const first = forwardedArgs[0];
   const runGit = async (): Promise<number> => {
-    if (!stats) return createGitx().run(args);
+    if (!stats) return createGitDedup().run(args);
     const reports: StorageReport[] = [];
-    const code = await createGitx({ onStorageReport: (report) => reports.push(report) }).run(forwardedArgs);
+    const code = await createGitDedup({ onStorageReport: (report) => reports.push(report) }).run(forwardedArgs);
     const { printStorageReports } = await import('./stats.js');
     printStorageReports(reports);
     return code;
@@ -36,7 +36,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   }
   // Editors such as VS Code parse this as Git's version, so lead with Git's line.
   if (args.length === 1 && (first === '--version' || first === '-v')) {
-    console.log(`${await createGitx().gitVersion()} (gitx ${packageInfo.version})`);
+    console.log(`${await createGitDedup().gitVersion()} (git-dedup ${packageInfo.version})`);
     return 0;
   }
 
@@ -44,13 +44,13 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   const [{ default: yargs }, { loadCommands }] = await Promise.all([import('yargs'), import('./document.js')]);
 
   const parser = yargs(args)
-    .scriptName('gitx')
+    .scriptName('git-dedup')
     .usage(
       '$0 <command> [options]\n\nGit commands pass through to Git; clone, submodule, and worktree can use the shared store.',
     )
     .version(packageInfo.version)
     .help()
-    .option('stats', { type: 'boolean', describe: 'Show object pool use and cache storage measurements' })
+    .option('stats', { type: 'boolean', describe: 'Show object pool use and checkout adoption measurements' })
     .strict()
     .showHelpOnFail(true);
   const commands = await loadCommands();

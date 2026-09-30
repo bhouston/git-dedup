@@ -5,13 +5,13 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 
 const roots = ['packages/core', 'packages/cli'];
-const temp = mkdtempSync(join(tmpdir(), 'gitx-package-check-'));
+const temp = mkdtempSync(join(tmpdir(), 'git-dedup-package-check-'));
 
 try {
   const manifests = roots.map((root) => JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')));
   assert.equal(manifests[0].private, undefined, 'core must be publishable');
   assert.equal(manifests[1].private, undefined, 'CLI must be publishable');
-  assert.equal(manifests[1].bin.gitx, './dist/bin.js');
+  assert.equal(manifests[1].bin['git-dedup'], './dist/bin.js');
   assert.ok(manifests[1].dependencies[manifests[0].name], 'CLI must depend on core');
 
   for (const [i, root] of roots.entries()) {

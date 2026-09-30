@@ -1,22 +1,22 @@
-# gitx
+# git-dedup
 
-[![npm version](https://img.shields.io/npm/v/@bhouston/gitx.svg)](https://www.npmjs.com/package/@bhouston/gitx)
-[![npm downloads](https://img.shields.io/npm/dm/@bhouston/gitx.svg)](https://www.npmjs.com/package/@bhouston/gitx)
-[![CI](https://github.com/bhouston/gitx/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gitx/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gitx/blob/main/LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
+[![npm version](https://img.shields.io/npm/v/git-dedup.svg)](https://www.npmjs.com/package/git-dedup)
+[![npm downloads](https://img.shields.io/npm/dm/git-dedup.svg)](https://www.npmjs.com/package/git-dedup)
+[![CI](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-git-dedup-blue)](https://git-dedup.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-gitx keeps Git objects from many remotes in one local object pool. Supported clones and linked repositories use Git alternates to borrow those objects, reducing duplicate storage across checkouts and forks. gitx is not a disposable cache: linked checkouts depend on the store.
+git-dedup keeps Git objects from many remotes in one local object pool. Supported clones and linked repositories use Git alternates to borrow those objects, reducing duplicate storage across checkouts and forks. git-dedup is not a disposable cache: linked checkouts depend on the store.
 
-In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), gitx uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
+In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
 
 ```sh
-# Populate the shared object pool in ~/.gitx.
-gitx clone https://github.com/you/project.git project
+# Populate the shared object pool in ~/.git-dedup.
+git-dedup clone https://github.com/you/project.git project
 
 # Another checkout borrows objects from the same pool.
-gitx clone https://github.com/you/project.git project-review
+git-dedup clone https://github.com/you/project.git project-review
 cd project-review
 
 # All normal Git commands work in the checkout.
@@ -27,7 +27,7 @@ git log --oneline
 
 Repeated clones can borrow objects already in the pool, reducing download and storage work.
 
-**[Documentation](https://gitx.ben3d.ca/) · [CLI reference](https://gitx.ben3d.ca/docs/cli) · [Agent setup](https://gitx.ben3d.ca/docs/agents)**
+**[Documentation](https://git-dedup.ben3d.ca/) · [CLI reference](https://git-dedup.ben3d.ca/docs/cli) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
 
 ## Features
 
@@ -43,91 +43,93 @@ Requires **Node.js 22+ and Git**. Tested on macOS and Linux.
 ## Installation
 
 ```sh
-npm install --global @bhouston/gitx
+npm install --global git-dedup
 ```
 
-The executable is `gitx`. The source repository is [bhouston/gitx](https://github.com/bhouston/gitx).
+The executable is `git-dedup`. The source repository is [bhouston/git-dedup](https://github.com/bhouston/git-dedup).
+
+If you previously installed `@bhouston/gitx`, install `git-dedup` and update scripts or editor settings that call `gitx`. Existing gitx stores and linked checkouts continue to work; the new CLI reuses an existing store automatically.
 
 ## Quick start
 
 ```sh
 # Clone the same remote into two working copies.
-gitx clone https://github.com/bhouston/gitx.git gitx-main
-gitx --stats clone https://github.com/bhouston/gitx.git gitx-review
+git-dedup clone https://github.com/bhouston/git-dedup.git git-dedup-main
+git-dedup --stats clone https://github.com/bhouston/git-dedup.git git-dedup-review
 
 # Consolidate a repository you already have.
-gitx cache ./gitx-main --stats
+git-dedup cache ./git-dedup-main --stats
 
 # Inspect the store and your setup.
-gitx store
-gitx store list
-gitx doctor
+git-dedup store
+git-dedup store list
+git-dedup doctor
 ```
 
-Use ordinary Git inside either checkout. gitx also forwards Git commands such as `gitx status`, `gitx diff`, and `gitx -C gitx-main log --oneline`.
+Use ordinary Git inside either checkout. git-dedup also forwards Git commands such as `git-dedup status`, `git-dedup diff`, and `git-dedup -C git-dedup-main log --oneline`.
 
 ### Submodules and worktrees
 
 ```sh
-gitx clone --recurse-submodules https://github.com/you/project.git
+git-dedup clone --recurse-submodules https://github.com/you/project.git
 cd project
-gitx submodule update --init --recursive
-gitx worktree add -b review ../project-review
+git-dedup submodule update --init --recursive
+git-dedup worktree add -b review ../project-review
 ```
 
-Supported submodule updates prepare missing module repositories from the pool before Git checks them out. `worktree add` shares the main repository's common object database and initializes supported submodules in the new worktree. With `--no-checkout`, initialization waits for a later submodule update. `submodule add` uses Git, then caches the added module.
+Supported submodule updates prepare missing module repositories from the pool before Git checks them out. `worktree add` shares the main repository's common object database and initializes supported submodules in the new worktree. With `--no-checkout`, initialization waits for a later submodule update. `submodule add` uses Git, then adds the module to the shared store.
 
-Unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, use ordinary Git behavior. See the [CLI reference](https://gitx.ben3d.ca/docs/cli) for the supported paths.
+Unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, use ordinary Git behavior. See the [CLI reference](https://git-dedup.ben3d.ca/docs/cli) for the supported paths.
 
 ### Storage reports
 
-Reports go to stderr and show whether the pool already existed. Cache reports compare private pack bytes before and after adoption. Clone reports identify use of Git alternates; they do not estimate disk savings.
+Reports go to stderr and show whether the pool already existed. Adoption reports compare private pack bytes before and after adoption. Clone reports identify use of Git alternates; they do not estimate disk savings.
 
 Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects. These are logical file-size estimates, not measured disk blocks reclaimed. The first use populates the pool and can increase total disk use. Plain Git fallback does not print a report.
 
 ## Configuration
 
-The default store is `~/.gitx`. Override it with `GITX_STORE`:
+The default store is `~/.git-dedup`. Override it with `GIT_DEDUP_STORE`:
 
 ```sh
-export GITX_STORE="$HOME/my-gitx-store"
+export GIT_DEDUP_STORE="$HOME/my-git-dedup-store"
 ```
 
-Changing `GITX_STORE` selects a different store; it does not move the existing one. gitx does not change global Git configuration.
+Changing `GIT_DEDUP_STORE` selects a different store; it does not move the existing one. git-dedup does not change global Git configuration.
 
-| Setting        | Purpose                                   |
-| -------------- | ----------------------------------------- |
-| `GITX_STORE`   | Override the store path for an invocation |
-| `gitx.gitPath` | Select the Git executable                 |
+| Setting             | Purpose                                   |
+| ------------------- | ----------------------------------------- |
+| `GIT_DEDUP_STORE`   | Override the store path for an invocation |
+| `git-dedup.gitPath` | Select the Git executable                 |
 
 ## Store dependency
 
-Cached checkouts depend on the object pool through Git alternates. Deleting or moving the store can make their history unreadable. The pool can be on a different filesystem.
+Linked checkouts depend on the object pool through Git alternates. Deleting or moving the store can make their history unreadable. The pool can be on a different filesystem.
 
-Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [store dependency guide](https://gitx.ben3d.ca/docs/safety) for details.
+Read the [storage model](https://git-dedup.ben3d.ca/docs/how-it-works) and [store dependency guide](https://git-dedup.ben3d.ca/docs/safety) for details.
 
 ## Packages
 
-| Package                                                                  | Purpose                                                         |
-| ------------------------------------------------------------------------ | --------------------------------------------------------------- |
-| [@bhouston/gitx](https://www.npmjs.com/package/@bhouston/gitx)           | CLI interface, Git forwarding, and `gitx docgen` documentation  |
-| [@bhouston/gitx-core](https://www.npmjs.com/package/@bhouston/gitx-core) | Git operations, object pool, and storage API                    |
-| [Website](https://github.com/bhouston/gitx/tree/main/packages/website)   | Docusaurus documentation and project site; not published to npm |
+| Package                                                                     | Purpose                                                             |
+| --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| [git-dedup](https://www.npmjs.com/package/git-dedup)                        | CLI interface, Git forwarding, and `git-dedup docgen` documentation |
+| [git-dedup-core](https://www.npmjs.com/package/git-dedup-core)              | Git operations, object pool, and storage API                        |
+| [Website](https://github.com/bhouston/git-dedup/tree/main/packages/website) | Docusaurus documentation and project site; not published to npm     |
 
 For scripts and applications:
 
 ```sh
-npm install @bhouston/gitx-core
+npm install git-dedup-core
 ```
 
 ```ts
-import { createGitx } from '@bhouston/gitx-core';
+import { createGitDedup } from 'git-dedup-core';
 
-const gitx = createGitx({ cwd: process.cwd() });
-process.exitCode = await gitx.run(['clone', 'https://github.com/bhouston/gitx.git']);
+const dedup = createGitDedup({ cwd: process.cwd() });
+process.exitCode = await dedup.run(['clone', 'https://github.com/bhouston/git-dedup.git']);
 ```
 
-See the [core API guide](https://github.com/bhouston/gitx/tree/main/packages/core). After installing globally, the [agent setup guide](https://gitx.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `gitx` explicitly.
+See the [core API guide](https://github.com/bhouston/git-dedup/tree/main/packages/core). After installing globally, the [agent setup guide](https://git-dedup.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `git-dedup` explicitly.
 
 ## Development
 
@@ -144,11 +146,11 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [RELEASI
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/bhouston/gitx/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gitx/releases) for release notes.
+See [CONTRIBUTING.md](https://github.com/bhouston/git-dedup/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/git-dedup/releases) for release notes.
 
 ## License
 
-[MIT](https://github.com/bhouston/gitx/blob/main/LICENSE)
+[MIT](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
 
 ## Author
 

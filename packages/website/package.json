@@ -1,5 +1,5 @@
 {
-  "name": "@bhouston/gitx-website",
+  "name": "git-dedup-website",
   "version": "0.0.0",
   "private": true,
   "scripts": {

@@ -1,23 +1,23 @@
 {
-  "name": "@bhouston/gitx-core",
+  "name": "git-dedup-core",
   "version": "0.1.0",
   "description": "Consolidated Git storage with a shared object pool",
   "keywords": [
     "alternates",
-    "cache",
     "clone",
     "deduplication",
     "git",
     "object-pool",
+    "shared-storage",
     "storage",
     "submodule",
     "worktree"
   ],
-  "homepage": "https://gitx.ben3d.ca",
+  "homepage": "https://git-dedup.ben3d.ca",
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/bhouston/gitx.git",
+    "url": "git+https://github.com/bhouston/git-dedup.git",
     "directory": "packages/core"
   },
   "files": [

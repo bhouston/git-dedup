@@ -41,7 +41,7 @@ pnpm docs:build
 pnpm test:workflow
 ```
 
-The pre-commit hook formats and lints staged files and type-checks the workspace. CI runs the checks on Linux and macOS. Tests use temporary repositories and isolated Git configuration. Keep storage logic in `packages/core`, CLI presentation in `packages/cli`, and site content in `packages/website`. Preserve native Git argument semantics by forwarding unsupported invocations. Cached consumers depend on the shared object pool. Never delete unrelated directories.
+The pre-commit hook formats and lints staged files and type-checks the workspace. CI runs the checks on Linux and macOS. Tests use temporary repositories and isolated Git configuration. Keep storage logic in `packages/core`, CLI presentation in `packages/cli`, and site content in `packages/website`. Preserve native Git argument semantics by forwarding unsupported invocations. Linked consumers depend on the shared object pool. Never delete unrelated directories.
 
 ## Releases
 
@@ -52,8 +52,8 @@ gh workflow run release.yml --ref main
 gh workflow run release.yml --ref main -f dry_run=true
 ```
 
-The workflow requires `main`, reruns CI on the selected commit, and uses semantic-release to select a shared version from Conventional Commits. It publishes `@bhouston/gitx-core` before `@bhouston/gitx` through npm trusted publishing. The website is private. See [RELEASING.md](RELEASING.md) for one-time activation and recovery.
+The workflow requires `main`, reruns CI on the selected commit, and uses semantic-release to select a shared version from Conventional Commits. It publishes `git-dedup-core` before `git-dedup` through npm trusted publishing. The website is private. See [RELEASING.md](RELEASING.md) for one-time activation and recovery.
 
 ## Security
 
-Report vulnerabilities privately through [GitHub private vulnerability reporting](https://github.com/bhouston/gitx/security/advisories/new), as described in [SECURITY.md](SECURITY.md). Do not disclose exploit details in a public issue.
+Report vulnerabilities privately through [GitHub private vulnerability reporting](https://github.com/bhouston/git-dedup/security/advisories/new), as described in [SECURITY.md](SECURITY.md). Do not disclose exploit details in a public issue.

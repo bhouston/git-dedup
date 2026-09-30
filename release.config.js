@@ -7,7 +7,7 @@ export const releasePackages = ['packages/core', 'packages/cli'];
 
 export default {
   branches: ['main'],
-  repositoryUrl: 'https://github.com/bhouston/gitx.git',
+  repositoryUrl: 'https://github.com/bhouston/git-dedup.git',
   tagFormat: 'v${version}',
   plugins: [
     ['@semantic-release/commit-analyzer', { preset: 'conventionalcommits' }],

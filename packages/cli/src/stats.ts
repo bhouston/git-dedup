@@ -1,4 +1,4 @@
-import type { StorageReport } from '@bhouston/gitx-core';
+import type { StorageReport } from 'git-dedup-core';
 
 function bytes(value: number): string {
   if (value < 1024) return `${value} B`;
@@ -15,7 +15,7 @@ function bytes(value: number): string {
 /** Report logical pack bytes; no filesystem allocation estimate is available. */
 export function printStorageReports(reports: StorageReport[]): void {
   for (const report of reports) {
-    const prefix = `gitx: ${report.operation} ${report.repository}: ${report.poolReused ? 'reused' : 'created'} object pool; `;
+    const prefix = `git-dedup: ${report.operation} ${report.repository}: ${report.poolReused ? 'reused' : 'created'} object pool; `;
     if (report.operation === 'cache') {
       process.stderr.write(
         prefix +
@@ -30,11 +30,11 @@ export function printStorageReports(reports: StorageReport[]): void {
     const total = reports.reduce((sum, report) => sum + report.estimatedSavedBytes, 0);
     if (reports[0]?.operation === 'cache') {
       process.stderr.write(
-        `gitx: estimated private pack reduction ${bytes(total)} (${total.toLocaleString('en-US')} bytes); ` +
+        `git-dedup: estimated private pack reduction ${bytes(total)} (${total.toLocaleString('en-US')} bytes); ` +
           'logical pack bytes only; actual disk reclaimed may differ.\n',
       );
     } else {
-      process.stderr.write('gitx: clone storage depends on objects already present in the shared pool.\n');
+      process.stderr.write('git-dedup: clone storage depends on objects already present in the shared pool.\n');
     }
   }
 }

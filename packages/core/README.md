@@ -1,37 +1,37 @@
-# @bhouston/gitx-core
+# git-dedup-core
 
-[![npm version](https://img.shields.io/npm/v/@bhouston/gitx-core.svg)](https://www.npmjs.com/package/@bhouston/gitx-core)
-[![npm downloads](https://img.shields.io/npm/dm/@bhouston/gitx-core.svg)](https://www.npmjs.com/package/@bhouston/gitx-core)
-[![CI](https://github.com/bhouston/gitx/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/gitx/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/gitx/blob/main/LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-gitx-blue)](https://gitx.ben3d.ca/)
+[![npm version](https://img.shields.io/npm/v/git-dedup-core.svg)](https://www.npmjs.com/package/git-dedup-core)
+[![npm downloads](https://img.shields.io/npm/dm/git-dedup-core.svg)](https://www.npmjs.com/package/git-dedup-core)
+[![CI](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
+[![Documentation](https://img.shields.io/badge/docs-git-dedup-blue)](https://git-dedup.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-_The TypeScript storage engine behind [gitx](https://www.npmjs.com/package/@bhouston/gitx)._
+_The TypeScript storage engine behind [git-dedup](https://www.npmjs.com/package/git-dedup)._
 
 Build Node.js tools that share one Git object pool across checkouts. The core owns cloning, submodule and worktree integration, repository consolidation, and store maintenance. It invokes native Git; the CLI handles command parsing and presentation.
 
 Optimized for short-lived repositories in agentic workflows. **Automatically** reuse Git objects across repeated checkouts and worktrees with submodules. The pool holds objects from different remotes, including forks and unrelated repositories. Checkouts borrow from it through Git alternates.
 
-In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), gitx uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
+In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
 
-**[Documentation](https://gitx.ben3d.ca/) · [Source](https://github.com/bhouston/gitx) · [CLI package](https://www.npmjs.com/package/@bhouston/gitx)**
+**[Documentation](https://git-dedup.ben3d.ca/) · [Source](https://github.com/bhouston/git-dedup) · [CLI package](https://www.npmjs.com/package/git-dedup)**
 
 ## Installation
 
 Requires **Node.js 22+ and Git** on macOS or Linux. The package is ESM and includes TypeScript declarations.
 
 ```sh
-npm install @bhouston/gitx-core
+npm install git-dedup-core
 ```
 
 ## Quick start
 
 ```ts
-import { createGitx } from '@bhouston/gitx-core';
+import { createGitDedup } from 'git-dedup-core';
 
-const gitx = createGitx({ cwd: process.cwd() });
-const exitCode = await gitx.run(['clone', 'https://github.com/bhouston/gitx.git', 'gitx-checkout']);
+const dedup = createGitDedup({ cwd: process.cwd() });
+const exitCode = await dedup.run(['clone', 'https://github.com/bhouston/git-dedup.git', 'git-dedup-checkout']);
 process.exitCode = exitCode;
 ```
 
@@ -39,14 +39,14 @@ process.exitCode = exitCode;
 
 ## API
 
-### `createGitx(options?)`
+### `createGitDedup(options?)`
 
-| Option            | Purpose                                                  |
-| ----------------- | -------------------------------------------------------- |
-| `cwd`             | Working directory; defaults to `process.cwd()`           |
-| `env`             | Environment overrides for Git operations                 |
-| `gitPath`         | Explicit Git executable                                  |
-| `onStorageReport` | Opt-in callback for clone and cache storage measurements |
+| Option            | Purpose                                                              |
+| ----------------- | -------------------------------------------------------------------- |
+| `cwd`             | Working directory; defaults to `process.cwd()`                       |
+| `env`             | Environment overrides for Git operations                             |
+| `gitPath`         | Explicit Git executable                                              |
+| `onStorageReport` | Opt-in callback for clone and checkout adoption storage measurements |
 
 The returned methods are asynchronous:
 
@@ -64,22 +64,22 @@ The returned methods are asynchronous:
 ### Consolidate an existing repository
 
 ```ts
-import { createGitx } from '@bhouston/gitx-core';
+import { createGitDedup } from 'git-dedup-core';
 
-const gitx = createGitx({ cwd: process.cwd() });
-const { cached, skipped, failed, repositories } = await gitx.cache('./gitx-checkout');
+const dedup = createGitDedup({ cwd: process.cwd() });
+const { cached, skipped, failed, repositories } = await dedup.cache('./git-dedup-checkout');
 console.log({ cached, skipped, failed, repositories });
-console.log(await gitx.storeInfo());
+console.log(await dedup.storeInfo());
 ```
 
-Cache adoption imports local refs and HEAD into the pool before repacking the checkout.
+Checkout adoption imports local refs and HEAD into the pool before repacking the checkout.
 
 ### Observe storage sharing
 
 ```ts
-import { createGitx } from '@bhouston/gitx-core';
+import { createGitDedup } from 'git-dedup-core';
 
-const gitx = createGitx({
+const dedup = createGitDedup({
   cwd: process.cwd(),
   onStorageReport(report) {
     console.log({
@@ -91,30 +91,30 @@ const gitx = createGitx({
   },
 });
 
-await gitx.cache('./gitx-checkout');
+await dedup.cache('./git-dedup-checkout');
 ```
 
-The callback enables metadata scans after optimized clones and cache adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for cache adoption. The package exports `GitxOptions`, `StorageReport`, `StoreInfo`, `CacheResult`, `DoctorCheck`, and `DoctorResult` types.
+The callback enables metadata scans after optimized clones and checkout adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for checkout adoption. The package exports `GitDedupOptions`, `StorageReport`, `StoreInfo`, `CacheResult`, `DoctorCheck`, and `DoctorResult` types.
 
-Cache estimates count the reduction in private pack bytes. Counts cover `.pack`, `.idx`, and `.rev` files, excluding loose objects. They measure logical file sizes, not physical disk blocks reclaimed. Clone reports do not estimate savings.
+Adoption estimates count the reduction in private pack bytes. Counts cover `.pack`, `.idx`, and `.rev` files, excluding loose objects. They measure logical file sizes, not physical disk blocks reclaimed. Clone reports do not estimate savings.
 
 ## Configuration
 
-The store defaults to `~/.gitx`; `GITX_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `gitx.gitPath`. The pool can be on a different filesystem from the checkout. gitx does not change global Git configuration.
+The store defaults to `~/.git-dedup`; `GIT_DEDUP_STORE` overrides its location. Changing the variable does not move existing data. Git configuration supports `git-dedup.gitPath`. The pool can be on a different filesystem from the checkout. git-dedup does not change global Git configuration.
 
 ## Store dependency
 
-Cached checkouts depend on the object pool through Git alternates. Deleting or moving the store can make their history unreadable.
+Linked checkouts depend on the object pool through Git alternates. Deleting or moving the store can make their history unreadable.
 
-Read the [storage model](https://gitx.ben3d.ca/docs/how-it-works) and [store dependency guide](https://gitx.ben3d.ca/docs/safety) for details.
+Read the [storage model](https://git-dedup.ben3d.ca/docs/how-it-works) and [store dependency guide](https://git-dedup.ben3d.ca/docs/safety) for details.
 
 ## Contributing
 
-See [CONTRIBUTING.md](https://github.com/bhouston/gitx/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/gitx/releases) for release notes.
+See [CONTRIBUTING.md](https://github.com/bhouston/git-dedup/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/git-dedup/releases) for release notes.
 
 ## License
 
-[MIT](https://github.com/bhouston/gitx/blob/main/LICENSE)
+[MIT](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
 
 ## Author
 
