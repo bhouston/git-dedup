@@ -457,7 +457,8 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     if (configured) return canonicalPath(resolve(cwd, expandHome(configured)));
     for (const legacy of ['~/.cache/gitx', '~/.gitx']) {
       const path = expandHome(legacy);
-      if (await isPresent(path)) return canonicalPath(path);
+      const marker = await readFile(join(path, '.gitx-store'), 'utf8').catch(() => '');
+      if (marker === 'gitx-store-v2\n') return canonicalPath(path);
     }
     return canonicalPath(expandHome('~/.git-dedup'));
   }
