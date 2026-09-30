@@ -41,6 +41,25 @@ export interface DoctorResult {
 export interface CacheResult {
   cached: number;
   skipped: number;
+  failed: number;
+  repositories: CacheRepositoryResult[];
+}
+export interface CacheRepositoryResult {
+  path: string;
+  status: 'cached' | 'skipped' | 'failed';
+  reason?: string;
+  /** Full underlying error for diagnostic output. */
+  detail?: string;
+}
+
+function cacheFailureReason(error: unknown, stage: string): string {
+  const message = String(error);
+  if (/cannot lock ref|reference already exists|case.insensitive|refname collision/i.test(message))
+    return 'ref collision in the shared pool';
+  if (stage === 'remote fetch' || /could not resolve host|connection refused|network is unreachable/i.test(message))
+    return 'remote fetch failed';
+  if (/Unsupported Git object format/i.test(message)) return 'unsupported object format';
+  return 'Git storage operation failed';
 }
 
 type GitResult = { code: number; stdout: string; stderr: string };
@@ -607,76 +626,107 @@ export function createGitx(options: GitxOptions = {}) {
   }
 
   async function cache(path = cwd): Promise<CacheResult> {
-    const result: CacheResult = { cached: 0, skipped: 0 };
+    const result: CacheResult = { cached: 0, skipped: 0, failed: 0, repositories: [] };
     const visited = new Set<string>();
+    function record(repoPath: string, status: CacheRepositoryResult['status'], reason?: string, detail?: string): void {
+      result[status]++;
+      result.repositories.push({
+        path: repoPath,
+        status,
+        ...(reason ? { reason } : {}),
+        ...(detail ? { detail } : {}),
+      });
+    }
     async function adopt(repo: string): Promise<void> {
-      const gitdir = await repoGitdir(repo).catch(() => undefined);
-      if (!gitdir || visited.has(gitdir)) {
-        result.skipped++;
+      let gitdir: string;
+      try {
+        gitdir = await repoGitdir(repo);
+      } catch (error) {
+        record(repo, 'skipped', 'not a Git repository or path is unavailable', String(error));
+        return;
+      }
+      if (visited.has(gitdir)) {
+        record(repo, 'skipped', 'object database already visited');
         return;
       }
       visited.add(gitdir);
-      if ((await checked(['rev-parse', '--show-object-format'], repo)) !== 'sha1') {
-        result.skipped++;
-        return;
-      }
-      const commonGitdir = await repoCommonGitdir(repo);
-      const url = await origin(repo);
-      const key = url && (await remoteKey(url, repo));
-      if (!key) {
-        result.skipped++;
-        await visitModules(join(gitdir, 'modules'));
-        return;
-      }
-      const root = await storePath();
-      await withLock(root, async () => {
-        const poolReused = await isPresent(poolPath(root));
-        const pool = await ensurePool(root);
-        process.stderr.write(`gitx: caching ${repo}: packing local objects\n`);
-        const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
-        const alreadyLinked = (await readFile(alternate, 'utf8').catch(() => ''))
-          .split('\n')
-          .includes(join(pool, 'objects'));
-        // Gather loose local objects before adding an alternate; afterwards Git may
-        // consider a local object redundant and omit it from a new pack.
-        if (!alreadyLinked) await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
-        const beforeUniqueBytes = await uniquePackBytes(commonGitdir);
-        process.stderr.write(`gitx: caching ${repo}: importing refs\n`);
-        await pinConsumer(pool, repo);
-        process.stderr.write(`gitx: caching ${repo}: sharing objects\n`);
-        await setAlternate(commonGitdir, pool);
-        await removeLegacyKeeps(commonGitdir);
-        await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
-        if (
-          (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graph'))) ||
-          (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graphs')))
-        )
-          await checked(['commit-graph', 'write', '--reachable'], repo);
-        await checked(['fsck', '--connectivity-only', '--no-reflogs'], repo);
-        // A checkout can be adopted from its local objects without a reachable origin.
-        // Keep the remote registered so store fetch can retry the refresh later.
-        await registerRemote(root, url!, key);
-        try {
-          await fetchRemoteObjects(pool, url!, key);
-        } catch (error) {
-          const reason = error instanceof Error ? error.message.split(' failed: ').at(-1) : String(error);
-          process.stderr.write(
-            `gitx: caching ${repo}: remote refresh deferred for ${key} (${reason?.trim()}); retry with gitx store fetch\n`,
+      let stage = 'preparing repository';
+      try {
+        if ((await checked(['rev-parse', '--show-object-format'], repo)) !== 'sha1') {
+          record(repo, 'skipped', 'unsupported object format (requires SHA-1)');
+          return;
+        }
+        const commonGitdir = await repoCommonGitdir(repo);
+        const url = await origin(repo);
+        if (!url) {
+          record(repo, 'skipped', 'no origin remote');
+          return;
+        }
+        const key = await remoteKey(url, repo);
+        if (!key) {
+          record(repo, 'skipped', 'origin URL cannot be used as a store key');
+          return;
+        }
+        const root = await storePath();
+        await withLock(root, async () => {
+          const poolReused = await isPresent(poolPath(root));
+          const pool = await ensurePool(root);
+          process.stderr.write(`gitx: caching ${repo}: packing local objects\n`);
+          const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
+          const alreadyLinked = (await readFile(alternate, 'utf8').catch(() => ''))
+            .split('\n')
+            .includes(join(pool, 'objects'));
+          // Gather loose local objects before adding an alternate; afterwards Git may
+          // consider a local object redundant and omit it from a new pack.
+          if (!alreadyLinked) await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
+          const beforeUniqueBytes = await uniquePackBytes(commonGitdir);
+          process.stderr.write(`gitx: caching ${repo}: importing refs\n`);
+          stage = 'importing refs';
+          await pinConsumer(pool, repo);
+          stage = 'sharing objects';
+          process.stderr.write(`gitx: caching ${repo}: sharing objects\n`);
+          await setAlternate(commonGitdir, pool);
+          await removeLegacyKeeps(commonGitdir);
+          await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
+          if (
+            (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graph'))) ||
+            (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graphs')))
+          )
+            await checked(['commit-graph', 'write', '--reachable'], repo);
+          await checked(['fsck', '--connectivity-only', '--no-reflogs'], repo);
+          // Local adoption succeeds even when the remote is temporarily unavailable.
+          await registerRemote(root, url, key);
+          let refreshError: unknown;
+          try {
+            await fetchRemoteObjects(pool, url, key);
+          } catch (error) {
+            refreshError = error;
+          }
+          if (options.onStorageReport) {
+            const afterUniqueBytes = await uniquePackBytes(commonGitdir);
+            emitStorageReport({
+              operation: 'cache',
+              repository: repo,
+              poolReused,
+              beforeUniqueBytes,
+              afterUniqueBytes,
+              estimatedSavedBytes: Math.max(0, beforeUniqueBytes - afterUniqueBytes),
+            });
+          }
+          record(
+            repo,
+            'cached',
+            refreshError ? 'remote refresh deferred; retry with gitx store fetch' : undefined,
+            refreshError ? String(refreshError) : undefined,
           );
-        }
-        result.cached++;
-        if (options.onStorageReport) {
-          const afterUniqueBytes = await uniquePackBytes(commonGitdir);
-          emitStorageReport({
-            operation: 'cache',
-            repository: repo,
-            poolReused,
-            beforeUniqueBytes,
-            afterUniqueBytes,
-            estimatedSavedBytes: Math.max(0, beforeUniqueBytes - afterUniqueBytes),
-          });
-        }
-      });
+          if (refreshError)
+            process.stderr.write(`gitx: caching ${repo}: remote refresh deferred; retry with gitx store fetch\n`);
+        });
+      } catch (error) {
+        record(repo, 'failed', cacheFailureReason(error, stage), String(error));
+      } finally {
+        await visitModules(join(gitdir, 'modules'));
+      }
       async function visitModules(directory: string): Promise<void> {
         for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
           if (!entry.isDirectory()) continue;
@@ -687,7 +737,6 @@ export function createGitx(options: GitxOptions = {}) {
           } else await visitModules(modulePath);
         }
       }
-      await visitModules(join(gitdir, 'modules'));
     }
     await adopt(resolve(cwd, path));
     return result;

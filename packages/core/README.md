@@ -50,16 +50,16 @@ process.exitCode = exitCode;
 
 The returned methods are asynchronous:
 
-| Method         | Result and behavior                                                                             |
-| -------------- | ----------------------------------------------------------------------------------------------- |
-| `run(args)`    | Git exit code; optimizes supported operations                                                   |
-| `cache(path?)` | `{ cached, skipped }`; adopts a repository and discoverable submodules, including local commits |
-| `storePath()`  | Resolved store path                                                                             |
-| `storeInfo()`  | `{ path, sizeBytes, remoteCount }`                                                              |
-| `fetch()`      | `{ fetched }`; fetches registered remotes into the pool                                         |
-| `gc()`         | `{ compacted }`; compacts the pool without pruning objects                                      |
-| `doctor()`     | `{ checks }`; each check has `name`, `ok`, and `detail`                                         |
-| `gitVersion()` | Underlying Git version line, such as `git version 2.50.1`                                       |
+| Method         | Result and behavior                                                                                                                                                                                   |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `run(args)`    | Git exit code; optimizes supported operations                                                                                                                                                         |
+| `cache(path?)` | `{ cached, skipped, failed, repositories }`; adopts a repository and discoverable submodules, including local commits. Each repository reports its path, status, and any reason or full error detail. |
+| `storePath()`  | Resolved store path                                                                                                                                                                                   |
+| `storeInfo()`  | `{ path, sizeBytes, remoteCount }`                                                                                                                                                                    |
+| `fetch()`      | `{ fetched }`; fetches registered remotes into the pool                                                                                                                                               |
+| `gc()`         | `{ compacted }`; compacts the pool without pruning objects                                                                                                                                            |
+| `doctor()`     | `{ checks }`; each check has `name`, `ok`, and `detail`                                                                                                                                               |
+| `gitVersion()` | Underlying Git version line, such as `git version 2.50.1`                                                                                                                                             |
 
 ### Consolidate an existing repository
 
@@ -67,8 +67,8 @@ The returned methods are asynchronous:
 import { createGitx } from '@bhouston/gitx-core';
 
 const gitx = createGitx({ cwd: process.cwd() });
-const { cached, skipped } = await gitx.cache('./gitx-checkout');
-console.log({ cached, skipped });
+const { cached, skipped, failed, repositories } = await gitx.cache('./gitx-checkout');
+console.log({ cached, skipped, failed, repositories });
 console.log(await gitx.storeInfo());
 ```
 

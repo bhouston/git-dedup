@@ -73,14 +73,14 @@ Other Git commands and unsupported clone forms pass through to Git. Local path c
 
 ### Store commands
 
-| Command                        | Purpose                                                                    |
-| ------------------------------ | -------------------------------------------------------------------------- |
-| `gitx cache [path]`            | Adopt or relink an existing repository and its discoverable submodules     |
-| `gitx cache <directory> --all` | Discover and cache checkouts below a directory; use `--dry-run` to preview |
-| `gitx store`                   | Show store path, remote count, and size                                    |
-| `gitx store fetch`             | Fetch registered remotes into the pool                                     |
-| `gitx store gc`                | Compact the pool without pruning consumer objects                          |
-| `gitx doctor`                  | Inspect the pool and Git setup                                             |
+| Command                        | Purpose                                                                                                              |
+| ------------------------------ | -------------------------------------------------------------------------------------------------------------------- |
+| `gitx cache [path]`            | Adopt or relink a repository and its submodules; report skipped and failed paths (`--verbose` shows full Git errors) |
+| `gitx cache <directory> --all` | Discover and adopt checkouts below a directory; use `--dry-run` to preview                                           |
+| `gitx store`                   | Show store path, remote count, and size                                                                              |
+| `gitx store fetch`             | Fetch registered remotes into the pool                                                                               |
+| `gitx store gc`                | Compact the pool without pruning consumer objects                                                                    |
+| `gitx doctor`                  | Inspect the pool and Git setup                                                                                       |
 
 ### Optional storage reports
 

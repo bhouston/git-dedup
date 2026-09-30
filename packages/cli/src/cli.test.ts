@@ -285,4 +285,25 @@ describe('gitx CLI', () => {
     expect(result).toHaveStdout(/Cached 0 repository\(s\); skipped 0; failed 0\./);
     await expect(access(join(dir, 'store'))).rejects.toThrow();
   });
+
+  it('names skipped and failed cache paths with bounded output and verbose details', async () => {
+    const { dir, remote } = await gitRemoteFixture();
+    const options = { cwd: dir, env: isolatedEnv(dir), timeout: 10_000 };
+    const missing = await cli.run(['cache', 'missing'], options);
+    expect(missing).toSucceed();
+    expect(missing).toHaveStderr(/Skipped .*missing: not a Git repository or path is unavailable/);
+    expect(missing).toHaveStdout('Cached 0 repository(s); skipped 1; failed 0.');
+
+    const native = await commandLine({ command: ['git'], name: 'git' }).run(['clone', remote, 'consumer'], options);
+    expect(native).toSucceed();
+    const badStoreOptions = { ...options, env: { ...options.env, GITX_STORE: join(dir, 'source') } };
+    const failed = await cli.run(['cache', 'consumer'], badStoreOptions);
+    expect(failed).toFail();
+    expect(failed).toHaveStderr(/Failed .*consumer: Git storage operation failed/);
+    expect(failed).toHaveStdout('Cached 0 repository(s); skipped 0; failed 1.');
+    expect(failed.stderr).not.toContain('git -C');
+    const verbose = await cli.run(['cache', 'consumer', '--verbose'], badStoreOptions);
+    expect(verbose).toFail();
+    expect(verbose.stderr).toContain('Refusing to adopt a nonempty directory');
+  });
 });
