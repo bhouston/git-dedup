@@ -60,6 +60,7 @@ The returned methods are asynchronous:
 | `gc()`         | `{ compacted }`; compacts the pool without pruning objects                                                                                                                                           |
 | `doctor()`     | `{ checks }`; each check has `name`, `ok`, and `detail`                                                                                                                                              |
 | `gitVersion()` | Underlying Git version line, such as `git version 2.50.1`                                                                                                                                            |
+| `gitPath()`    | Path of the underlying Git executable, honoring the `gitPath` option and `git-dedup.gitPath`                                                                                                         |
 
 ### Consolidate an existing repository
 

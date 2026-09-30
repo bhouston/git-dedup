@@ -5,19 +5,19 @@ import { isAbsolute, join, resolve, sep } from 'node:path';
 
 const execFileAsync = promisify(execFile);
 
-async function isInsideWorktree(path: string): Promise<boolean> {
+async function isInsideWorktree(git: string, path: string): Promise<boolean> {
   try {
-    const { stdout } = await execFileAsync('git', ['-C', path, 'rev-parse', '--is-inside-work-tree']);
+    const { stdout } = await execFileAsync(git, ['-C', path, 'rev-parse', '--is-inside-work-tree']);
     return stdout.trim() === 'true';
   } catch {
     return false;
   }
 }
 
-async function ignoredDirectories(path: string, names: string[]): Promise<Set<string>> {
+async function ignoredDirectories(git: string, path: string, names: string[]): Promise<Set<string>> {
   if (!names.length) return new Set();
   const output = await new Promise<string>((done, reject) => {
-    const child = spawn('git', ['-C', path, 'check-ignore', '--no-index', '-z', '--stdin']);
+    const child = spawn(git, ['-C', path, 'check-ignore', '--no-index', '-z', '--stdin']);
     const stdout: Buffer[] = [];
     const stderr: Buffer[] = [];
     child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
@@ -41,11 +41,11 @@ export interface DiscoveredCheckout {
 }
 
 /** Discover checkout roots without following symlinks or entering ignored directories or Git metadata. */
-export async function discoverCheckouts(directory: string): Promise<DiscoveredCheckout[]> {
+export async function discoverCheckouts(directory: string, git = 'git'): Promise<DiscoveredCheckout[]> {
   const root = resolve(directory);
   if (!(await stat(root)).isDirectory()) throw new Error(`Not a directory: ${root}`);
   const candidates: string[] = [];
-  const pending = [{ path: root, insideWorktree: await isInsideWorktree(root) }];
+  const pending = [{ path: root, insideWorktree: await isInsideWorktree(git, root) }];
   while (pending.length) {
     const { path: current, insideWorktree } = pending.pop()!;
     const entries = await readdir(current, { withFileTypes: true });
@@ -55,6 +55,7 @@ export async function discoverCheckouts(directory: string): Promise<DiscoveredCh
     const excluded =
       insideWorktree || hasGit
         ? await ignoredDirectories(
+            git,
             current,
             directories.map((entry) => entry.name),
           )
@@ -68,7 +69,7 @@ export async function discoverCheckouts(directory: string): Promise<DiscoveredCh
   const unique = new Map<string, DiscoveredCheckout>();
   for (const path of candidates.toSorted((a, b) => a.length - b.length || a.localeCompare(b))) {
     try {
-      const { stdout } = await execFileAsync('git', [
+      const { stdout } = await execFileAsync(git, [
         '-C',
         path,
         'rev-parse',
