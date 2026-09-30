@@ -874,18 +874,34 @@ export function createGitDedup(options: GitDedupOptions = {}) {
 
   async function doctor(): Promise<DoctorResult> {
     const root = await storePath();
-    return withLock(root, async () => {
-      const checks: DoctorCheck[] = [];
-      const pool = await ensurePool(root);
-      checks.push({
-        name: 'pool',
-        ok: true,
-        detail: `${pool}: SHA-1 object database`,
-      });
+    const checks: DoctorCheck[] = [];
+    const pool = poolPath(root);
+    if (!(await isPresent(pool))) {
+      checks.push({ name: 'pool', ok: false, detail: `${pool}: object pool is missing` });
+    } else {
+      try {
+        const format = await checked(['-C', pool, 'rev-parse', '--show-object-format']);
+        const bare = await checked(['-C', pool, 'rev-parse', '--is-bare-repository']);
+        checks.push({
+          name: 'pool',
+          ok: format === 'sha1' && bare === 'true',
+          detail: `${pool}: ${format === 'sha1' ? 'SHA-1' : format.toUpperCase()} ${bare === 'true' ? 'bare' : 'non-bare'} object database`,
+        });
+      } catch (error) {
+        checks.push({
+          name: 'pool',
+          ok: false,
+          detail: `${pool}: ${error instanceof Error ? error.message : String(error)}`,
+        });
+      }
+    }
+    try {
       const binary = await gitPath();
       checks.push({ name: 'git', ok: true, detail: `${binary}: ${await checked(['--version'])}` });
-      return { checks };
-    });
+    } catch (error) {
+      checks.push({ name: 'git', ok: false, detail: error instanceof Error ? error.message : String(error) });
+    }
+    return { checks };
   }
 
   async function addWorktree(args: string[], at: string): Promise<number> {

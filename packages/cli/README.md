@@ -79,10 +79,9 @@ Other Git commands and unsupported clone forms pass through to Git. Local path c
 | --------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
 | `git-dedup store add [path]`            | Adopt or relink a repository and its submodules; report skipped and failed paths (`--verbose` shows full Git errors) |
 | `git-dedup store add <directory> --all` | Discover and adopt checkouts below a directory; use `--dry-run` to preview                                           |
-| `git-dedup store`                       | Show store path, remote count, and size                                                                              |
+| `git-dedup store`                       | Show store path, remote count, size, and Git and pool health checks                                                  |
 | `git-dedup store fetch`                 | Fetch registered remotes into the pool                                                                               |
 | `git-dedup store gc`                    | Compact the pool without pruning consumer objects                                                                    |
-| `git-dedup doctor`                      | Inspect the pool and Git setup                                                                                       |
 
 ### Optional storage reports
 

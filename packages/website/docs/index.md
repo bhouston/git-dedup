@@ -47,7 +47,7 @@ git-dedup store add .
 git-dedup store add ~/Coding --all --dry-run
 git-dedup store add ~/Coding --all
 
-# View the store.
+# View the store and its health checks.
 git-dedup store
 git-dedup store list
 ```
