@@ -472,6 +472,10 @@ async function consumerId(commonGitdir: string): Promise<string> {
 }
 
 export function createGitDedup(options: GitDedupOptions = {}) {
+  if (process.platform === 'win32')
+    throw new Error(
+      'git-dedup does not support Windows yet. Run it inside WSL, or use Git directly. See https://github.com/bhouston/git-dedup/issues/74',
+    );
   const cwd = resolve(options.cwd ?? process.cwd());
   const incomingEnv: NodeJS.ProcessEnv = { ...process.env, ...options.env };
   const env: NodeJS.ProcessEnv = { ...incomingEnv, GITX_ACTIVE: '1', GIT_DEDUP_ACTIVE: '1' };

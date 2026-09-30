@@ -27,6 +27,16 @@ async function fixture() {
   return { root, config, store, env, api: createGitDedup({ cwd: root, env }) };
 }
 
+it('refuses to run on Windows with a pointer to WSL', () => {
+  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
+  Object.defineProperty(process, 'platform', { value: 'win32' });
+  try {
+    expect(() => createGitDedup()).toThrow(/does not support Windows yet\. Run it inside WSL/);
+  } finally {
+    Object.defineProperty(process, 'platform', platform);
+  }
+});
+
 it('uses the new default, preserves legacy stores, and respects explicit overrides', async () => {
   const { root, config, store, env, api } = await fixture();
   vi.stubEnv('HOME', root);
