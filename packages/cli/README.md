@@ -11,7 +11,7 @@
 
 Coding agents and editors clone the same repositories again and again: one checkout per task, per agent, per review. Each clone normally carries its own full copy of the history. git-dedup is a Git wrapper whose clones, forks, and worktree submodules share one local object pool, so every new checkout reuses the history already on disk.
 
-In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus 35.5 GB without sharing, saving about 24.4 GB (70%). Check out time also dropped from over 1 minute to 10 seconds for large repos, an improvement of 600%.
+In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus 35.5 GB without sharing, saving about 24.4 GB (70%). Checkout is also 6x faster for large repos, dropping from over 1 minute to 10 seconds.
 
 ```sh
 # Populate the shared object pool in ~/.git-dedup.

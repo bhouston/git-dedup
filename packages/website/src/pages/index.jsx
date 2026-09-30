@@ -56,8 +56,7 @@ git log --oneline`}</code>
             <p className={styles.performance}>
               In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees
               counted once), git-dedup uses 11.1 GB for Git objects versus 35.5 GB without sharing, saving about 24.4 GB
-              (69%). Check out time also dropped from over 1 minute to 10 seconds for large repos, an improvement of
-              600%.
+              (70%). Checkout is also 6x faster for large repos, dropping from over 1 minute to 10 seconds.
             </p>
             <div className={styles.actions}>
               <Link className={styles.primary} to="/docs">
