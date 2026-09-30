@@ -9,6 +9,8 @@
 
 gitx keeps Git objects from many remotes in one local object pool. Supported clones and cached repositories use Git alternates to borrow those objects, reducing duplicate storage across checkouts and forks.
 
+In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), gitx uses 11.1 GB for Git objects versus an estimated 35.5 GB without sharing, saving about 24.4 GB (69%).
+
 ```sh
 # Populate the shared object pool in ~/.cache/gitx.
 gitx clone https://github.com/you/project.git project
