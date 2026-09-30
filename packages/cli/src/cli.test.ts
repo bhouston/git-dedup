@@ -149,7 +149,11 @@ describe('git-dedup CLI', () => {
     expect(await cli.run(['clone', remote, 'consumer'], options)).toSucceed();
     const result = await cli.run(['store', 'fetch'], options);
     expect(result).toSucceed();
-    expect(result).toHaveStdout('Fetched 1 remote(s).');
+    expect(result).toHaveStdout('Fetched 1 remote(s); 0 failed.');
+    await rm(join(dir, 'remotes', 'team', 'project.git'), { recursive: true, force: true });
+    const failed = await cli.run(['store', 'fetch'], options);
+    expect(failed).toFail();
+    expect(failed).toHaveStdout('Fetched 0 remote(s); 1 failed.');
     expect(await cli.run(['store', 'refresh'], options)).toFail();
   });
 

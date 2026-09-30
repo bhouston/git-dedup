@@ -574,11 +574,35 @@ it('fetches remotes into namespaced refs and never prunes consumer objects', asy
   git(['add', '.'], source);
   git(['commit', '-m', 'advance'], source);
   git(['push', 'origin', 'main'], source);
-  expect(await api.fetch()).toEqual({ fetched: 1 });
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
   const refs = git(['for-each-ref', '--format=%(objectname)', 'refs/gitx/remotes'], join(store, 'pool.git'));
   expect(refs).toContain(git(['rev-parse', 'HEAD'], source));
   expect(await api.gc()).toEqual({ compacted: true });
   git(['fsck', '--full'], join(root, 'consumer'));
+});
+
+it('continues fetching and repacks when one remote fails', async () => {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const brokenPath = join(root, 'remote', 'team', 'aaa-broken.git');
+  const broken = remote.replace('project.git', 'aaa-broken.git');
+  git(['clone', '--bare', join(root, 'remote', 'team', 'project.git'), brokenPath], root);
+  expect(await api.run(['clone', broken, 'broken'])).toBe(0);
+  expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
+  await rm(brokenPath, { recursive: true, force: true });
+  await writeFile(join(source, 'new.txt'), 'new remote commit');
+  git(['add', '.'], source);
+  git(['commit', '-m', 'advance'], source);
+  git(['push', 'origin', 'main'], source);
+  const result = await api.fetch();
+  expect(result).toMatchObject({ fetched: 1, failed: 1 });
+  expect(result.remotes).toContainEqual(
+    expect.objectContaining({ key: keyForRemote(broken), status: 'failed', reason: expect.any(String) }),
+  );
+  expect(result.remotes).toContainEqual({ key: keyForRemote(remote), status: 'fetched' });
+  const refs = git(['for-each-ref', '--format=%(objectname)', 'refs/gitx/remotes'], join(store, 'pool.git'));
+  expect(refs).toContain(git(['rev-parse', 'HEAD'], source));
+  expect(git(['count-objects', '-v'], join(store, 'pool.git'))).toMatch(/^count: 0$/m);
 });
 
 it('keeps an old clone valid after a force push and pool gc', async () => {
@@ -592,7 +616,7 @@ it('keeps an old clone valid after a force push and pool gc', async () => {
   git(['add', '.'], source);
   git(['commit', '-m', 'replacement'], source);
   git(['push', '--force', 'origin', 'HEAD:main'], source);
-  expect(await api.fetch()).toEqual({ fetched: 1 });
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
   expect(await api.gc()).toEqual({ compacted: true });
   expect(git(['rev-parse', 'HEAD'], join(root, 'old'))).toBe(old);
   expect(git(['show', 'HEAD:hello.txt'], join(root, 'old'))).toBe('hello');
