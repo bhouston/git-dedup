@@ -986,7 +986,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return result.stdout.trim();
   }
 
-  return { run, add, storeInfo, listRemotes, fetch, gc, doctor, storePath, gitVersion };
+  return { run, add, storeInfo, listRemotes, fetch, gc, doctor, storePath, gitVersion, gitPath };
 }
 
 function processExists(pid: number): boolean {

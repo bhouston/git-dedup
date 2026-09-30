@@ -1,7 +1,8 @@
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, rm, symlink, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { createGitDedup } from 'git-dedup-core';
 import { afterEach, expect, it } from 'vitest';
 import { discoverCheckouts } from './discover.js';
 
@@ -56,4 +57,21 @@ it('honors nested ignore rules and negation without traversing ignored parents',
     paths.kept,
     paths.visible,
   ]);
+});
+
+it('uses the Git executable configured with git-dedup.gitPath', async () => {
+  const root = await fixture();
+  const project = join(root, 'project');
+  init(project);
+  const log = join(root, 'calls.log');
+  const wrapper = join(root, 'configured-git');
+  const real = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  await writeFile(wrapper, `#!/bin/sh\necho "$@" >> '${log}'\nexec '${real}' "$@"\n`, { mode: 0o755 });
+  await writeFile(join(root, 'config'), `[git-dedup]\n gitPath = ${wrapper}\n`);
+  const env = { ...process.env, GIT_CONFIG_GLOBAL: join(root, 'config'), GIT_CONFIG_NOSYSTEM: '1' };
+  const git = await createGitDedup({ cwd: root, env }).gitPath();
+
+  expect(git).toBe(wrapper);
+  expect((await discoverCheckouts(root, git)).map(({ path }) => path)).toEqual([project]);
+  expect(await readFile(log, 'utf8')).toContain('rev-parse --absolute-git-dir');
 });

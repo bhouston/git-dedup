@@ -49,7 +49,7 @@ export const handler = async (
   const reports: StorageReport[] = [];
   const client = dedup(args.stats ? { onStorageReport: (report) => reports.push(report) } : undefined);
   if (args.all) {
-    const targets = await discoverCheckouts(args.path ?? process.cwd());
+    const targets = await discoverCheckouts(args.path ?? process.cwd(), await client.gitPath());
     console.log(`Discovered ${targets.length} checkout(s):`);
     for (const target of targets)
       console.log(`  ${target.path}${target.coveredBy ? ` (submodule of ${target.coveredBy})` : ''}`);
