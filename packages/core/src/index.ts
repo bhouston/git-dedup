@@ -53,6 +53,21 @@ export interface StoreAddRepositoryResult {
   /** Full underlying error for diagnostic output. */
   detail?: string;
 }
+export interface StoreRemoveResult {
+  removed: number;
+  skipped: number;
+  failed: number;
+  repositories: StoreRemoveRepositoryResult[];
+}
+export interface StoreRemoveRepositoryResult {
+  path: string;
+  status: 'removed' | 'skipped' | 'failed';
+  reason?: string;
+  /** Full underlying error for diagnostic output. */
+  detail?: string;
+  /** Bytes in the checkout's own object directory after removal. */
+  objectBytes?: number;
+}
 
 export interface StoreFetchResult {
   fetched: number;
@@ -444,14 +459,15 @@ export function createGitDedup(options: GitDedupOptions = {}) {
   }
 
   // 'tee' captures output like the default and also streams stderr (Git progress) to the user.
-  async function git(args: string[], at = cwd, inherit: boolean | 'tee' = false): Promise<GitResult> {
+  async function git(args: string[], at = cwd, inherit: boolean | 'tee' = false, input?: string): Promise<GitResult> {
     const binary = await gitPath();
     return new Promise((resolveResult, reject) => {
       const child = spawn(binary, args, {
         cwd: at,
         env,
-        stdio: inherit === true ? 'inherit' : ['ignore', 'pipe', 'pipe'],
+        stdio: inherit === true ? 'inherit' : [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       });
+      child.stdin?.end(input);
       let stdout = '';
       let stderr = '';
       if (inherit !== true) {
@@ -482,12 +498,12 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     });
   }
 
-  async function checked(args: string[], at = cwd, progress = false): Promise<string> {
+  async function checked(args: string[], at = cwd, progress = false, input?: string): Promise<string> {
     if (hasRepositoryEnvironment)
       throw new Error(
         'Unset Git repository override environment variables before running git-dedup storage operations',
       );
-    const result = await git(args, at, progress && 'tee');
+    const result = await git(args, at, progress && 'tee', input);
     if (result.code !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim()}`);
     return result.stdout.trim();
   }
@@ -745,6 +761,18 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return 0;
   }
 
+  /** Visit the checkout of every initialized submodule gitdir under a modules directory. */
+  async function visitModules(directory: string, visit: (repo: string) => Promise<void>): Promise<void> {
+    for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
+      if (!entry.isDirectory()) continue;
+      const modulePath = join(directory, entry.name);
+      if (await isPresent(join(modulePath, 'HEAD'))) {
+        const workTree = (await git(['--git-dir', modulePath, 'config', '--get', 'core.worktree'])).stdout.trim();
+        if (workTree) await visit(resolve(modulePath, workTree));
+      } else await visitModules(modulePath, visit);
+    }
+  }
+
   async function add(path = cwd): Promise<StoreAddResult> {
     const result: StoreAddResult = { added: 0, skipped: 0, failed: 0, repositories: [] };
     const visited = new Set<string>();
@@ -868,20 +896,91 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       } catch (error) {
         record(repo, 'failed', addFailureReason(error, stage), String(error));
       } finally {
-        await visitModules(join(gitdir, 'modules'));
-      }
-      async function visitModules(directory: string): Promise<void> {
-        for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
-          if (!entry.isDirectory()) continue;
-          const modulePath = join(directory, entry.name);
-          if (await isPresent(join(modulePath, 'HEAD'))) {
-            const workTree = (await git(['--git-dir', modulePath, 'config', '--get', 'core.worktree'])).stdout.trim();
-            if (workTree) await adopt(resolve(modulePath, workTree));
-          } else await visitModules(modulePath);
-        }
+        await visitModules(join(gitdir, 'modules'), adopt);
       }
     }
     await adopt(resolve(cwd, path));
+    return result;
+  }
+
+  async function remove(path = cwd): Promise<StoreRemoveResult> {
+    const result: StoreRemoveResult = { removed: 0, skipped: 0, failed: 0, repositories: [] };
+    const visited = new Set<string>();
+    const root = await storePath();
+    const pool = poolPath(root);
+    const poolObjects = join(pool, 'objects');
+    function record(entry: StoreRemoveRepositoryResult): void {
+      result[entry.status]++;
+      result.repositories.push(entry);
+    }
+    async function detach(repo: string): Promise<void> {
+      let commonGitdir: string;
+      try {
+        commonGitdir = await repoCommonGitdir(repo);
+      } catch (error) {
+        record({
+          path: repo,
+          status: 'skipped',
+          reason: 'not a Git repository or path is unavailable',
+          detail: String(error),
+        });
+        return;
+      }
+      // Linked worktrees share one object database, so detach it once.
+      if (visited.has(commonGitdir)) return;
+      visited.add(commonGitdir);
+      const gitdirs = [
+        commonGitdir,
+        ...(await readdir(join(commonGitdir, 'worktrees')).catch(() => [])).map((name) =>
+          join(commonGitdir, 'worktrees', name),
+        ),
+      ];
+      const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
+      try {
+        const original = await readFile(alternate, 'utf8').catch(() => '');
+        const lines = original.split('\n');
+        if (!lines.includes(poolObjects)) {
+          record({ path: repo, status: 'skipped', reason: 'not linked to the store' });
+          return;
+        }
+        if (!(await isPresent(pool))) throw new Error(`Object pool is missing: ${pool}`);
+        // Lock without initializing: removal must never create a store.
+        await lockDirectory(storeLock(root), async () => {
+          process.stderr.write(`git-dedup: removing ${repo}: copying shared objects\n`);
+          // Without -l, repack copies every object reachable from refs, reflogs, and
+          // the indexes of all worktrees, including objects read through the pool.
+          await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '--pack-kept-objects'], repo);
+          const remaining = lines.filter((line) => line && line !== poolObjects);
+          if (remaining.length) await writeFile(alternate, remaining.join('\n') + '\n');
+          else await rm(alternate);
+          try {
+            await checked(['fsck', '--connectivity-only'], repo);
+          } catch (error) {
+            await writeFile(alternate, original);
+            throw error;
+          }
+          const id = (await readFile(join(commonGitdir, 'gitx-consumer-id'), 'utf8').catch(() => '')).trim();
+          if (/^[a-f0-9-]{36}$/.test(id)) {
+            const pins = await checked([
+              '-C',
+              pool,
+              'for-each-ref',
+              '--format=delete %(refname)',
+              `refs/gitx/consumers/${id}`,
+            ]);
+            if (pins) await checked(['-C', pool, 'update-ref', '--stdin'], cwd, false, pins + '\n');
+          }
+          await rm(join(commonGitdir, 'gitx-consumer-id'), { force: true });
+          for (const gitdir of gitdirs) await rm(join(gitdir, 'gitx-cache.json'), { force: true });
+        });
+        record({ path: repo, status: 'removed', objectBytes: await directorySize(join(commonGitdir, 'objects')) });
+      } catch (error) {
+        record({ path: repo, status: 'failed', reason: 'could not detach from the store', detail: String(error) });
+      } finally {
+        for (const gitdir of gitdirs) await visitModules(join(gitdir, 'modules'), detach);
+      }
+    }
+    await detach(resolve(cwd, path));
     return result;
   }
 
@@ -1070,7 +1169,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return result.stdout.trim();
   }
 
-  return { run, add, storeInfo, listRemotes, fetch, gc, doctor, storePath, gitVersion, gitPath };
+  return { run, add, remove, storeInfo, listRemotes, fetch, gc, doctor, storePath, gitVersion, gitPath };
 }
 
 function processExists(pid: number): boolean {

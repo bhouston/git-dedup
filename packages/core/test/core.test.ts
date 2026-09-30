@@ -767,6 +767,78 @@ it('leaves local LFS objects untouched when adopting', async () => {
   git(['fsck', '--full'], consumer);
 });
 
+it('removes a clone from the store so it survives store deletion', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
+  const consumer = join(root, 'consumer');
+  const id = (await readFile(join(consumer, '.git', 'gitx-consumer-id'), 'utf8')).trim();
+  const result = await api.remove(consumer);
+  expect(result).toMatchObject({ removed: 1, skipped: 0, failed: 0 });
+  expect(result.repositories[0]!.objectBytes).toBeGreaterThan(0);
+  await expect(stat(join(consumer, '.git', 'objects', 'info', 'alternates'))).rejects.toMatchObject({
+    code: 'ENOENT',
+  });
+  await expect(stat(join(consumer, '.git', 'gitx-consumer-id'))).rejects.toMatchObject({ code: 'ENOENT' });
+  expect(git(['for-each-ref', `refs/gitx/consumers/${id}`], join(store, 'pool.git'))).toBe('');
+  expect(await api.remove(consumer)).toMatchObject({
+    removed: 0,
+    skipped: 1,
+    repositories: [expect.objectContaining({ reason: 'not linked to the store' })],
+  });
+  await rm(store, { recursive: true, force: true });
+  git(['fsck', '--full'], consumer);
+  expect(git(['show', 'HEAD:hello.txt'], consumer)).toBe('hello');
+});
+
+it('treats removing an unlinked checkout as a no-op without creating a store', async () => {
+  const { root, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.remove(consumer)).toMatchObject({ removed: 0, skipped: 1, failed: 0 });
+  await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('removes an adopted repo and its submodule from the store', async () => {
+  const { root, remote, store } = await fixture();
+  const parent = join(root, 'parent');
+  git(['clone', remote, parent], root);
+  git(['config', 'user.email', 'test@example.test'], parent);
+  git(['config', 'user.name', 'Test'], parent);
+  git(['-c', 'protocol.git.allow=always', 'submodule', 'add', remote, 'deps/project'], parent);
+  git(['commit', '-am', 'module'], parent);
+  const module = join(parent, 'deps/project');
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect((await api.add(parent)).added).toBe(2);
+  const removed = await api.remove(parent);
+  expect(removed).toMatchObject({ removed: 2, skipped: 0, failed: 0 });
+  expect(removed.repositories.map((repository) => repository.path)).toEqual([parent, module]);
+  await rm(store, { recursive: true, force: true });
+  git(['fsck', '--full'], parent);
+  git(['fsck', '--full'], module);
+  expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
+});
+
+it('removes a linked worktree checkout through its common gitdir', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'parent'])).toBe(0);
+  const parent = join(root, 'parent');
+  const worktree = join(root, 'worktree');
+  git(['worktree', 'add', '-b', 'second', worktree], parent);
+  git(['config', 'user.email', 'test@example.test'], worktree);
+  git(['config', 'user.name', 'Test'], worktree);
+  await writeFile(join(worktree, 'local.txt'), 'local\n');
+  git(['add', '.'], worktree);
+  git(['commit', '-m', 'local'], worktree);
+  expect(await api.remove(worktree)).toMatchObject({ removed: 1, skipped: 0, failed: 0 });
+  await rm(store, { recursive: true, force: true });
+  git(['fsck', '--full'], parent);
+  git(['fsck', '--full'], worktree);
+  expect(git(['show', 'HEAD:local.txt'], worktree)).toBe('local');
+});
+
 it.each([
   { EDITOR: 'vi' },
   { VISUAL: 'code --wait' },
