@@ -429,7 +429,9 @@ export function createGitx(options: GitxOptions = {}) {
   }
 
   async function storePath(): Promise<string> {
-    return canonicalPath(resolve(cwd, expandHome(env.GITX_STORE || '~/.cache/gitx')));
+    if (env.GITX_STORE) return canonicalPath(resolve(cwd, expandHome(env.GITX_STORE)));
+    const legacy = expandHome('~/.cache/gitx');
+    return canonicalPath((await isPresent(legacy)) ? legacy : expandHome('~/.gitx'));
   }
 
   async function ensurePool(root: string): Promise<string> {
