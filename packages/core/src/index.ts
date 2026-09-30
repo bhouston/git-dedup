@@ -441,17 +441,24 @@ export function createGitx(options: GitxOptions = {}) {
 
   async function pinConsumer(pool: string, repo: string): Promise<void> {
     // Immutable snapshots keep old tips reachable after force pushes, branch
-    // deletion, or a later cache call on the same checkout.
+    // deletion, or a later cache call on the same checkout. Source ref names
+    // cannot be copied into a files-backed pool: refs differing only by case
+    // collide on case-insensitive filesystems. Object IDs are safe ref names,
+    // and one pin per distinct tip preserves the same reachability.
     const id = randomUUID();
-    await checked([
-      '-C',
-      pool,
-      'fetch',
-      '--no-tags',
-      repo,
-      `+refs/*:refs/gitx/consumers/${id}/*`,
-      `HEAD:refs/gitx/consumers/${id}/HEAD`,
-    ]);
+    const refs = await checked(['for-each-ref', '--format=%(objectname)', 'refs'], repo);
+    const head = await checked(['rev-parse', 'HEAD'], repo);
+    const tips = [...new Set([...refs.split('\n').filter(Boolean), head])];
+    // Keep fetch argument lists bounded for repositories with many refs.
+    for (let offset = 0; offset < tips.length; offset += 128)
+      await checked([
+        '-C',
+        pool,
+        'fetch',
+        '--no-tags',
+        repo,
+        ...tips.slice(offset, offset + 128).map((oid) => `+${oid}:refs/gitx/consumers/${id}/${oid}`),
+      ]);
   }
 
   async function repoGitdir(path: string): Promise<string> {
