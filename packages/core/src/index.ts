@@ -334,6 +334,21 @@ async function removeLegacyKeeps(gitdir: string): Promise<void> {
   }
 }
 
+async function consumerId(commonGitdir: string): Promise<string> {
+  // Shared across linked worktrees so a tip is pinned only once per object database.
+  const path = join(commonGitdir, 'gitx-consumer-id');
+  const existing = (await readFile(path, 'utf8').catch(() => '')).trim();
+  if (/^[a-f0-9-]{36}$/.test(existing)) return existing;
+  const id = randomUUID();
+  try {
+    await writeFile(path, `${id}\n`, { flag: 'wx' });
+    return id;
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    return (await readFile(path, 'utf8')).trim();
+  }
+}
+
 export function createGitx(options: GitxOptions = {}) {
   const cwd = resolve(options.cwd ?? process.cwd());
   const incomingEnv: NodeJS.ProcessEnv = { ...process.env, ...options.env };
@@ -469,25 +484,38 @@ export function createGitx(options: GitxOptions = {}) {
     ]);
   }
 
-  async function pinConsumer(pool: string, repo: string): Promise<void> {
+  async function consumerTips(repo: string): Promise<string[]> {
+    const refs = await checked(['for-each-ref', '--format=%(objectname)', 'refs'], repo);
+    const head = await checked(['rev-parse', 'HEAD'], repo);
+    return [...new Set([...refs.split('\n').filter(Boolean), head])].toSorted();
+  }
+
+  async function pinnedTips(pool: string, id: string): Promise<Set<string>> {
+    return new Set(
+      (await checked(['-C', pool, 'for-each-ref', '--format=%(objectname)', `refs/gitx/consumers/${id}`]))
+        .split('\n')
+        .filter(Boolean),
+    );
+  }
+
+  async function pinConsumer(pool: string, repo: string, commonGitdir: string, tips: string[]): Promise<void> {
     // Immutable snapshots keep old tips reachable after force pushes, branch
     // deletion, or a later cache call on the same checkout. Source ref names
     // cannot be copied into a files-backed pool: refs differing only by case
     // collide on case-insensitive filesystems. Object IDs are safe ref names,
     // and one pin per distinct tip preserves the same reachability.
-    const id = randomUUID();
-    const refs = await checked(['for-each-ref', '--format=%(objectname)', 'refs'], repo);
-    const head = await checked(['rev-parse', 'HEAD'], repo);
-    const tips = [...new Set([...refs.split('\n').filter(Boolean), head])];
+    const id = await consumerId(commonGitdir);
+    const existing = await pinnedTips(pool, id);
+    const missing = tips.filter((oid) => !existing.has(oid));
     // Keep fetch argument lists bounded for repositories with many refs.
-    for (let offset = 0; offset < tips.length; offset += 128)
+    for (let offset = 0; offset < missing.length; offset += 128)
       await checked([
         '-C',
         pool,
         'fetch',
         '--no-tags',
         repo,
-        ...tips.slice(offset, offset + 128).map((oid) => `+${oid}:refs/gitx/consumers/${id}/${oid}`),
+        ...missing.slice(offset, offset + 128).map((oid) => `+${oid}:refs/gitx/consumers/${id}/${oid}`),
       ]);
   }
 
@@ -530,7 +558,7 @@ export function createGitx(options: GitxOptions = {}) {
       const cloneArgs = ['clone', '--reference', pool, ...parsed.forwarded, parsed.remote, destination];
       const result = await git(cloneArgs, effectiveCwd, true);
       if (result.code !== 0) return result.code;
-      await pinConsumer(pool, destination);
+      await pinConsumer(pool, destination, await repoCommonGitdir(destination), await consumerTips(destination));
       if (options.onStorageReport)
         emitStorageReport({ operation: 'clone', repository: destination, poolReused, estimatedSavedBytes: 0 });
       return 0;
@@ -575,7 +603,7 @@ export function createGitx(options: GitxOptions = {}) {
         await checked(['clone', '--bare', '--reference', pool, remote, gitdir]);
         await checked(['--git-dir', gitdir, 'config', 'core.bare', 'false']);
         await checked(['--git-dir', gitdir, 'config', 'core.worktree', target]);
-        await pinConsumer(pool, gitdir);
+        await pinConsumer(pool, gitdir, gitdir, await consumerTips(gitdir));
       });
     }
   }
@@ -673,18 +701,33 @@ export function createGitx(options: GitxOptions = {}) {
         await withLock(root, async () => {
           const poolReused = await isPresent(poolPath(root));
           const pool = await ensurePool(root);
-          process.stderr.write(`gitx: caching ${repo}: packing local objects\n`);
+          const tips = await consumerTips(repo);
+          // A successful marker belongs to this worktree; linked worktrees can have different HEADs.
+          const marker = join(gitdir, 'gitx-cache.json');
+          const state = JSON.stringify({ version: 1, pool, remote: url, key, tips }) + '\n';
           const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
           const alreadyLinked = (await readFile(alternate, 'utf8').catch(() => ''))
             .split('\n')
             .includes(join(pool, 'objects'));
+          const registered =
+            (await readFile(join(root, 'remotes', `${remoteId(key)}.json`), 'utf8').catch(() => '')) ===
+            JSON.stringify({ key, remote: url }) + '\n';
+          const stateMatches =
+            poolReused && alreadyLinked && registered && (await readFile(marker, 'utf8').catch(() => '')) === state;
+          const currentPins = stateMatches ? await pinnedTips(pool, await consumerId(commonGitdir)) : undefined;
+          if (currentPins && tips.every((oid) => currentPins.has(oid))) {
+            record(repo, 'skipped', 'already current');
+            process.stderr.write(`gitx: caching ${repo}: already current\n`);
+            return;
+          }
+          process.stderr.write(`gitx: caching ${repo}: packing local objects\n`);
           // Gather loose local objects before adding an alternate; afterwards Git may
           // consider a local object redundant and omit it from a new pack.
           if (!alreadyLinked) await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
           const beforeUniqueBytes = await uniquePackBytes(commonGitdir);
           process.stderr.write(`gitx: caching ${repo}: importing refs\n`);
           stage = 'importing refs';
-          await pinConsumer(pool, repo);
+          await pinConsumer(pool, repo, commonGitdir, tips);
           stage = 'sharing objects';
           process.stderr.write(`gitx: caching ${repo}: sharing objects\n`);
           await setAlternate(commonGitdir, pool);
@@ -704,6 +747,7 @@ export function createGitx(options: GitxOptions = {}) {
           } catch (error) {
             refreshError = error;
           }
+          await writeFile(marker, state);
           if (options.onStorageReport) {
             const afterUniqueBytes = await uniquePackBytes(commonGitdir);
             emitStorageReport({

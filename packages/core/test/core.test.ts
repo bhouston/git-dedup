@@ -153,6 +153,67 @@ it('caches an existing repo including a local-only commit', async () => {
   expect((await api.storeInfo()).remoteCount).toBe(1);
 });
 
+it('skips an unchanged cache rerun without adding pins or refreshing the remote', async () => {
+  const { root, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  expect((await api.cache(consumer)).cached).toBe(1);
+  const pool = join(store, 'pool.git');
+  const pins = git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/gitx/consumers'], pool);
+  const packNames = (await readdir(join(consumer, '.git', 'objects', 'pack'))).toSorted();
+  const output = vi.spyOn(process.stderr, 'write');
+  try {
+    expect(await api.cache(consumer)).toMatchObject({
+      cached: 0,
+      skipped: 1,
+      failed: 0,
+      repositories: [{ path: consumer, status: 'skipped', reason: 'already current' }],
+    });
+    expect(output.mock.calls.map(([message]) => String(message)).join('')).toContain('already current');
+    expect(output.mock.calls.map(([message]) => String(message)).join('')).not.toContain('updating object pool');
+    expect(output.mock.calls.map(([message]) => String(message)).join('')).not.toContain('packing local objects');
+  } finally {
+    output.mockRestore();
+  }
+  expect(git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/gitx/consumers'], pool)).toBe(pins);
+  expect((await readdir(join(consumer, '.git', 'objects', 'pack'))).toSorted()).toEqual(packNames);
+  git(['fsck', '--full'], consumer);
+});
+
+it('pins changed local refs once and retains old tips after force updates', async () => {
+  const { root, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  git(['clone', remote, consumer], root);
+  git(['config', 'user.email', 'test@example.test'], consumer);
+  git(['config', 'user.name', 'Test'], consumer);
+  const api = createGitx({ cwd: root, env: testEnv(root, store) });
+  expect((await api.cache(consumer)).cached).toBe(1);
+  const original = git(['rev-parse', 'HEAD'], consumer);
+  git(['checkout', '--orphan', 'replacement'], consumer);
+  git(['rm', '-rf', '.'], consumer);
+  await writeFile(join(consumer, 'replacement.txt'), 'replacement\n');
+  git(['add', '.'], consumer);
+  git(['commit', '-m', 'replacement'], consumer);
+  const replacement = git(['rev-parse', 'HEAD'], consumer);
+  git(['branch', '-D', 'main'], consumer);
+  expect((await api.cache(consumer)).cached).toBe(1);
+  const pool = join(store, 'pool.git');
+  const pins = git(['for-each-ref', '--format=%(objectname)', 'refs/gitx/consumers'], pool).split('\n');
+  expect(pins).toContain(original);
+  expect(pins).toContain(replacement);
+  expect(await api.cache(consumer)).toMatchObject({
+    cached: 0,
+    skipped: 1,
+    failed: 0,
+    repositories: [{ path: consumer, status: 'skipped', reason: 'already current' }],
+  });
+  expect(git(['for-each-ref', '--format=%(objectname)', 'refs/gitx/consumers'], pool).split('\n')).toEqual(pins);
+  await api.gc();
+  expect(git(['cat-file', '-t', original], pool)).toBe('commit');
+  git(['fsck', '--full'], consumer);
+});
+
 it('pins distinct case-colliding ref tips without changing the consumer refs', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
@@ -477,9 +538,15 @@ it('resolves relative submodule URLs against the parent remote', async () => {
   const vscodeModule = join(root, 'parent-vscode', 'deps/project');
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], vscodeModule));
   expect((await api.cache(join(root, 'parent'))).cached).toBe(2);
+  const unchanged = await api.cache(join(root, 'parent'));
+  expect(unchanged).toMatchObject({ cached: 0, skipped: 2, failed: 0 });
+  expect(unchanged.repositories).toEqual([
+    expect.objectContaining({ path: join(root, 'parent'), status: 'skipped', reason: 'already current' }),
+    expect.objectContaining({ path: module, status: 'skipped', reason: 'already current' }),
+  ]);
   git(['remote', 'remove', 'origin'], module);
   const recursive = await api.cache(join(root, 'parent'));
-  expect(recursive).toMatchObject({ cached: 1, skipped: 1, failed: 0 });
+  expect(recursive).toMatchObject({ cached: 0, skipped: 2, failed: 0 });
   expect(recursive.repositories).toContainEqual(
     expect.objectContaining({ path: module, status: 'skipped', reason: 'no origin remote' }),
   );
