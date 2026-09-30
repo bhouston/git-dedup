@@ -1,7 +1,7 @@
 import { afterEach, expect, it, vi } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
-import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGitDedup, keyForRemote, type StorageReport } from '../src/index.js';
@@ -597,6 +597,40 @@ it('keeps an old clone valid after a force push and pool gc', async () => {
   expect(git(['rev-parse', 'HEAD'], join(root, 'old'))).toBe(old);
   expect(git(['show', 'HEAD:hello.txt'], join(root, 'old'))).toBe('hello');
   git(['fsck', '--full'], join(root, 'old'));
+});
+
+it('keeps borrowed objects after a force push and automatic pool gc', async () => {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const consumer = join(root, 'consumer');
+  const pool = join(store, 'pool.git');
+  expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
+  git(['config', 'user.email', 'test@example.test'], consumer);
+  git(['config', 'user.name', 'Test'], consumer);
+  git(['checkout', '-b', 'feature'], source);
+  await writeFile(join(source, 'feature.txt'), 'feature\n');
+  git(['add', '.'], source);
+  git(['commit', '-m', 'feature'], source);
+  git(['push', 'origin', 'feature'], source);
+  expect(await api.fetch()).toEqual({ fetched: 1 });
+  git(['fetch', 'origin'], consumer);
+  git(['checkout', '-b', 'feature', 'origin/feature'], consumer);
+  git(['commit', '--allow-empty', '-m', 'local work'], consumer);
+  git(['commit', '--amend', '-m', 'rewritten feature'], source);
+  git(['push', '--force', 'origin', 'feature'], source);
+  // Simulate months of use: old pool objects, many packs, and eager automatic gc.
+  const old = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000);
+  for (const entry of await readdir(join(pool, 'objects'), { recursive: true }))
+    await utimes(join(pool, 'objects', entry), old, old);
+  await writeFile(
+    join(root, 'global.gitconfig'),
+    '[gc]\n\tauto = 1\n\tautoPackLimit = 1\n\tautoDetach = false\n[maintenance]\n\tautoDetach = false\n[fetch]\n\tunpackLimit = 1\n',
+  );
+  expect(await api.fetch()).toEqual({ fetched: 1 });
+  // Newer Git maintenance may not prune after fetch, so also run gc directly.
+  git(['gc', '--auto'], pool);
+  expect(git(['show', 'HEAD~1:feature.txt'], consumer)).toBe('feature');
+  git(['fsck', '--full'], consumer);
 });
 
 it('leaves local LFS objects untouched when adopting', async () => {
