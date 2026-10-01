@@ -1041,6 +1041,41 @@ it('removes a linked worktree checkout through its common gitdir', async () => {
   expect(git(['show', 'HEAD:local.txt'], worktree)).toBe('local');
 });
 
+it('keeps objects named only by in-progress merge and cherry-pick state when removing', async () => {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
+  const consumer = join(root, 'consumer');
+  const worktree = join(root, 'worktree');
+  git(['config', 'user.email', 'test@example.test'], consumer);
+  git(['config', 'user.name', 'Test'], consumer);
+  git(['checkout', '-b', 'feature'], source);
+  await writeFile(join(source, 'hello.txt'), 'feature\n');
+  git(['commit', '-am', 'feature'], source);
+  git(['push', 'origin', 'feature'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+  git(['fetch', 'origin'], consumer);
+  const feature = git(['rev-parse', 'origin/feature'], consumer);
+  git(['commit', '--allow-empty', '-m', 'local'], consumer);
+  git(['merge', '--no-commit', '--no-ff', feature], consumer);
+  // A linked worktree has its own state: a conflicted cherry-pick of the same commit.
+  git(['worktree', 'add', '-b', 'second', worktree, 'HEAD~1'], consumer);
+  await writeFile(join(worktree, 'hello.txt'), 'local\n');
+  git(['commit', '-am', 'conflict'], worktree);
+  expect(() => git(['cherry-pick', feature], worktree)).toThrow();
+  git(['update-ref', '-d', 'refs/remotes/origin/feature'], consumer);
+  await rm(join(consumer, '.git', 'FETCH_HEAD'));
+
+  expect(await api.remove(consumer)).toMatchObject({ removed: 1, failed: 0 });
+  expect(git(['for-each-ref'], consumer)).not.toContain(feature);
+  await rm(store, { recursive: true, force: true });
+  expect(git(['cat-file', '-t', feature], consumer)).toBe('commit');
+  git(['commit', '-m', 'merge'], consumer);
+  expect(git(['rev-parse', 'HEAD^2'], consumer)).toBe(feature);
+  expect(git(['rev-parse', 'CHERRY_PICK_HEAD'], worktree)).toBe(feature);
+  git(['fsck', '--full'], consumer);
+});
+
 it.each([
   { EDITOR: 'vi' },
   { VISUAL: 'code --wait' },
