@@ -10,7 +10,7 @@
 
 **Faster checkouts, a fraction of the disk space.**
 
-git-dedup is a drop-in replacement for `git clone` built for fleets of coding agents. It automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again. Large checkouts are 6x faster, and Git data takes 70% less disk.
+git-dedup is a wrapper around `git` built for fleets of coding agents. It forwards ordinary Git commands unchanged and automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again. Large checkouts are 6x faster, and Git data takes 70% less disk.
 
 ```sh
 npm install --global git-dedup

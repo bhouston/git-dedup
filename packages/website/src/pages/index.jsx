@@ -36,9 +36,9 @@ export default function Home() {
               <em>A fraction of the disk space.</em>
             </h1>
             <p className={styles.lead}>
-              git-dedup is a drop-in replacement for <code>git clone</code> built for fleets of coding agents. It
-              automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses
-              what is already on disk instead of downloading it again.
+              git-dedup is a wrapper around <code>git</code> built for fleets of coding agents. It forwards ordinary Git
+              commands unchanged and automatically keeps one shared copy of Git history, so every new clone, worktree,
+              and submodule reuses what is already on disk instead of downloading it again.
             </p>
             <pre className={styles.example}>
               <code>{`npm install -g git-dedup
