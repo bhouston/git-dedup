@@ -224,8 +224,10 @@ function parseClone(
 }
 
 function defaultCloneName(remote: string): string {
+  // Like Git, a local `repo/.git` clones into `repo`.
   return remote
     .replace(/\/+$/, '')
+    .replace(/\/\.git$/, '')
     .split(/[/:]/)
     .at(-1)!
     .replace(/\.git$/, '');
@@ -710,8 +712,13 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     const parsed = parseClone(args);
     if (typeof parsed === 'string') return fallback(args, parsed);
     const key = await remoteKey(parsed.remote, effectiveCwd);
-    if (!key) return fallback(args, 'remote is not a supported network URL');
     const destination = resolve(effectiveCwd, parsed.destination ?? defaultCloneName(parsed.remote));
+    if (!key) {
+      fallback(args, 'remote is not a supported network URL');
+      const result = await git(['clone', ...args], effectiveCwd, true);
+      if (result.code === 0) await pinBorrower(destination);
+      return result.code;
+    }
     // Like Git, clone into a missing or empty directory.
     const entries = await readdir(destination).catch((error: NodeJS.ErrnoException) =>
       error.code === 'ENOENT' ? [] : undefined,
@@ -763,6 +770,20 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       emitStorageReport({ operation: 'clone', repository: destination, poolReused, estimatedSavedBytes: 0 });
     if (parsed.recurse) return updateSubmodules(['update', '--init', '--recursive'], destination);
     return 0;
+  }
+
+  /** A local clone of a linked checkout copies its alternates and borrows from the pool; pin it like any clone. */
+  async function pinBorrower(destination: string): Promise<void> {
+    const root = await storePath();
+    const pool = poolPath(root);
+    // ponytail: destination comes from defaultCloneName; unusual local names such as `..` are not recognized.
+    if (!(await isPresent(join(destination, '.git')))) return;
+    const commonGitdir = await repoCommonGitdir(destination);
+    const alternates = await readFile(join(commonGitdir, 'objects', 'info', 'alternates'), 'utf8').catch(() => '');
+    if (!alternates.split('\n').includes(join(pool, 'objects'))) return;
+    // The source's pins hold these objects until this pin lands.
+    const tips = await consumerTips(destination);
+    await withLock(root, () => pinConsumer(pool, destination, commonGitdir, tips));
   }
 
   async function seedSubmodules(repo: string): Promise<void> {
