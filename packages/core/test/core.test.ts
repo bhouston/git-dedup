@@ -177,6 +177,29 @@ it('adds an existing repo including a local-only commit', async () => {
   expect((await api.storeInfo()).remoteCount).toBe(1);
 });
 
+it('keeps an existing alternate that lacks a trailing newline', async () => {
+  const { root, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  const other = join(root, 'other');
+  git(['clone', remote, consumer], root);
+  git(['clone', remote, other], root);
+  git(['config', 'user.email', 'test@example.test'], other);
+  git(['config', 'user.name', 'Test'], other);
+  await writeFile(join(other, 'other.txt'), 'other\n');
+  git(['add', '.'], other);
+  git(['commit', '-m', 'other'], other);
+  git(['fetch', other, 'main:othermain'], consumer);
+  const otherObjects = join(other, '.git', 'objects');
+  const alternates = join(consumer, '.git', 'objects', 'info', 'alternates');
+  await writeFile(alternates, otherObjects);
+  git(['repack', '-a', '-d', '-l'], consumer);
+  git(['fsck', '--full'], consumer);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect((await api.add(consumer)).added).toBe(1);
+  expect(await readFile(alternates, 'utf8')).toBe(`${otherObjects}\n${join(store, 'pool.git', 'objects')}\n`);
+  git(['fsck', '--full'], consumer);
+});
+
 it('skips an unchanged store add rerun without adding pins or refreshing the remote', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
