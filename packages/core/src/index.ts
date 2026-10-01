@@ -114,11 +114,13 @@ function delay(ms: number): Promise<void> {
 
 function keyForRemote(remote: string): string | undefined {
   let host: string;
+  let port = '';
+  let user: string | undefined;
   let pathname: string;
-  if (/^[^/@:]+@[^/:]+:.+/.test(remote)) {
-    const match = remote.match(/^[^/@:]+@([^/:]+):(.+)$/)!;
-    host = match[1]!;
-    pathname = match[2]!;
+  const scp = remote.match(/^([^/@:]+)@([^/:]+):(.+)$/);
+  if (scp) {
+    [, user, host, pathname] = scp as [string, string, string, string];
+    if (!pathname.startsWith('/')) pathname = `/~/${pathname}`;
   } else {
     let url: URL;
     try {
@@ -127,8 +129,17 @@ function keyForRemote(remote: string): string | undefined {
       return undefined;
     }
     if (!['https:', 'http:', 'ssh:', 'git:'].includes(url.protocol)) return undefined;
-    host = url.hostname + (url.port ? `_${url.port}` : '');
+    host = url.hostname;
+    // `:` cannot appear in a host name, so ports never collide with hosts.
+    port = url.port ? `:${url.port}` : '';
+    if (url.protocol === 'ssh:') user = url.username;
     pathname = url.pathname;
+  }
+  // Home-relative SSH paths differ per user; `git` is the shared hosting account convention.
+  let home = '';
+  if (user !== undefined && pathname.startsWith('/~/')) {
+    pathname = pathname.slice(2);
+    if (user !== 'git') home = `~${user}/`;
   }
   const parts = pathname
     .replace(/^\/+/, '')
@@ -141,7 +152,7 @@ function keyForRemote(remote: string): string | undefined {
   )
     return undefined;
   if (!/^[a-zA-Z0-9._-]+$/.test(host)) return undefined;
-  return `${host.toLowerCase()}/${parts.join('/')}`;
+  return `${host.toLowerCase()}${port}/${home}${parts.join('/')}`;
 }
 
 async function directorySize(path: string): Promise<number> {
