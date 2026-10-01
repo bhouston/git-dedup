@@ -8,7 +8,7 @@
 [![Documentation](https://img.shields.io/badge/docs-git--dedup-blue)](https://git-dedup.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-**Many coding agents, one copy of Git history.** _The TypeScript storage engine behind [git-dedup](https://www.npmjs.com/package/git-dedup)._
+**Faster checkouts, a fraction of the disk space.** _The TypeScript storage engine behind [git-dedup](https://www.npmjs.com/package/git-dedup)._
 
 Build agent runners, editors, and other Node.js tools that create many checkouts without storing the same Git history many times. Clones, forks, and worktree submodules share one local object pool and borrow from it through Git alternates. The pool holds objects from different remotes, including forks and unrelated repositories.
 
@@ -32,8 +32,12 @@ npm install git-dedup-core
 import { createGitDedup } from 'git-dedup-core';
 
 const dedup = createGitDedup({ cwd: process.cwd() });
-const exitCode = await dedup.run(['clone', 'https://github.com/bhouston/git-dedup.git', 'git-dedup-checkout']);
-process.exitCode = exitCode;
+
+// check out a new repo automatically using the dedup store
+await dedup.run(['clone', 'https://github.com/you/project.git']);
+
+// dedup an existing repo into the store
+await dedup.add('./my-existing-repo');
 ```
 
 `run()` accepts Git arguments and returns an exit code. It optimizes supported remote clones, `submodule update --init`, and `worktree add` with submodules. Recursive updates handle nested submodules. `submodule add` adopts the module after Git creates it. Other commands and unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, pass through to Git.

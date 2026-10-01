@@ -8,78 +8,53 @@
 [![Documentation](https://img.shields.io/badge/docs-git--dedup-blue)](https://git-dedup.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-**Many coding agents, one copy of Git history.**
+**Faster checkouts, a fraction of the disk space.**
 
-Coding agents and editors clone the same repositories again and again: one checkout per task, per agent, per review. Each clone normally carries its own full copy of the history. git-dedup is a Git wrapper whose clones, forks, and worktree submodules share one local object pool, so every new checkout reuses the history already on disk.
+git-dedup is a drop-in replacement for `git clone` built for fleets of coding agents. It automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again.
 
-In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus 35.5 GB without sharing, saving about 24.4 GB (70%). Checkout is also 6x faster for large repos, dropping from over 1 minute to 10 seconds.
+- **6x faster checkouts.** Large checkouts drop from over a minute to about 10 seconds.
+- **70% less disk.** Across 117 checkouts, Git data dropped from 35.5 GB to 11.1 GB.
+- **No workflow changes.** Checkouts are normal Git repositories. Use `git`, your editor, and your agents as before.
 
-```sh
-# Populate the shared object pool in ~/.git-dedup.
-git-dedup clone https://github.com/you/project.git project
-
-# Another checkout borrows objects from the same pool.
-git-dedup clone https://github.com/you/project.git project-review
-cd project-review
-
-# All normal Git commands work in the checkout.
-git status
-git diff
-git log --oneline
-```
-
-Repeated clones can borrow objects already in the pool, reducing download and storage work.
-
-**[Documentation](https://git-dedup.ben3d.ca/) · [CLI reference](https://git-dedup.ben3d.ca/docs/cli) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
-
-## Features
-
-- Reuse one object pool across remotes and repeated clones.
-- Consolidate existing repositories, including local commits and discoverable submodules.
-- Prepare nested submodules and submodules inside new worktrees from the pool.
-- Inspect storage sharing with optional [`--stats` reports](https://git-dedup.ben3d.ca/docs/how-it-works#storage-reports).
-- Fetch registered remotes and compact the pool while retaining consumer objects.
-- Use the TypeScript core library in your own Node.js tools.
-
-Requires **Node.js 22+ and Git**. Tested on macOS and Linux.
-
-## Installation
+## Install and use
 
 ```sh
 npm install --global git-dedup
+
+# check out a new repo automatically using the dedup store
+git-dedup clone https://github.com/you/project.git
+
+# dedup an existing repo into the store
+git-dedup store add ./my-existing-repo
 ```
 
-The executable is `git-dedup`. The source repository is [bhouston/git-dedup](https://github.com/bhouston/git-dedup).
+That's it. git-dedup automatically consolidates the new or existing project's history into a shared store in `~/.git-dedup` or if its history already existed there, it reuses it automatically.
 
-## Quick start
+Requires **Node.js 22+ and Git**. Tested on macOS and Linux.
 
-```sh
-# Clone the same remote into two working copies.
-git-dedup clone https://github.com/bhouston/git-dedup.git git-dedup-main
-git-dedup --stats clone https://github.com/bhouston/git-dedup.git git-dedup-review
+**[Documentation](https://git-dedup.ben3d.ca/) · [CLI reference](https://git-dedup.ben3d.ca/docs/cli) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
 
-# Consolidate a repository you already have.
-git-dedup store add ./git-dedup-main --stats
+## Why I built it
 
-# Inspect the store and your setup.
-git-dedup store
-git-dedup store list
-```
+I run fleets of coding agents, each in its own checkout. Every task started by cloning repositories and submodules from scratch, so agents sat idle waiting on downloads. Then I started running out of disk space, because every checkout held another full copy of the same history. git-dedup fixed both. We have dogfooded it heavily across our own agent fleets and repositories to make it robust and efficient.
 
-Use ordinary Git inside either checkout. git-dedup also forwards Git commands such as `git-dedup status`, `git-dedup diff`, and `git-dedup -C git-dedup-main log --oneline`.
-
-### Submodules and worktrees
+## More commands
 
 ```sh
+# Worktrees and submodules get their history from the store too.
 git-dedup clone --recurse-submodules https://github.com/you/project.git
-cd project
+git-dedup worktree add -b my-task ../my-task
 git-dedup submodule update --init --recursive
-git-dedup worktree add -b review ../project-review
+
+# Reclaim space from repositories you already have.
+git-dedup store add .
+git-dedup store add ~/Coding --all
+
+# Inspect the store.
+git-dedup store
 ```
 
-Supported submodule updates prepare missing module repositories from the pool before Git checks them out. `worktree add` shares the main repository's common object database and initializes supported submodules in the new worktree. With `--no-checkout`, initialization waits for a later submodule update. `submodule add` uses Git, then adds the module to the shared store.
-
-Unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, use ordinary Git behavior. git-dedup then prints one `git-dedup: <reason>; using plain Git` line on stderr unless you pass `-q` or `--quiet`. See the [CLI reference](https://git-dedup.ben3d.ca/docs/cli) for the supported paths.
+Every other command, such as `git-dedup status`, is forwarded to Git. Clone forms git-dedup does not handle, such as shallow clones, fall back to plain Git. See the [CLI reference](https://git-dedup.ben3d.ca/docs/cli).
 
 ## Configuration
 
@@ -96,11 +71,9 @@ Changing `GIT_DEDUP_STORE` selects a different store; it does not move the exist
 | `GIT_DEDUP_STORE`   | Override the store path for an invocation |
 | `git-dedup.gitPath` | Select the Git executable                 |
 
-## Store dependency
+## Keep the store
 
-Linked checkouts depend on the object pool through Git alternates. Deleting or moving the store can make their history unreadable. The pool can be on a different filesystem.
-
-Read the [storage model](https://git-dedup.ben3d.ca/docs/how-it-works) and [store dependency guide](https://git-dedup.ben3d.ca/docs/safety) for details.
+Your checkouts read their history from the shared store. Deleting it breaks every repository consolidated into it. See the [store guide](https://git-dedup.ben3d.ca/docs/safety) for moving or detaching checkouts.
 
 ## Packages
 

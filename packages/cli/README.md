@@ -8,27 +8,21 @@
 [![Documentation](https://img.shields.io/badge/docs-git--dedup-blue)](https://git-dedup.ben3d.ca/)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
 
-**Many coding agents, one copy of Git history.**
+**Faster checkouts, a fraction of the disk space.**
 
-Coding agents and editors clone the same repositories again and again: one checkout per task, per agent, per review. Each clone normally carries its own full copy of the history. git-dedup is a Git wrapper whose clones, forks, and worktree submodules share one local object pool, so every new checkout reuses the history already on disk.
-
-In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees counted once), git-dedup uses 11.1 GB for Git objects versus 35.5 GB without sharing, saving about 24.4 GB (70%). Checkout is also 6x faster for large repos, dropping from over 1 minute to 10 seconds.
+git-dedup is a drop-in replacement for `git clone` built for fleets of coding agents. It automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again. Large checkouts are 6x faster, and Git data takes 70% less disk.
 
 ```sh
-# Populate the shared object pool in ~/.git-dedup.
-git-dedup clone https://github.com/you/project.git project
+npm install --global git-dedup
 
-# Another checkout borrows objects from the same pool.
-git-dedup clone https://github.com/you/project.git project-review
-cd project-review
+# check out a new repo automatically using the dedup store
+git-dedup clone https://github.com/you/project.git
 
-# All normal Git commands work in the checkout.
-git status
-git diff
-git log --oneline
+# dedup an existing repo into the store
+git-dedup store add ./my-existing-repo
 ```
 
-Repeated clones can borrow objects already in the pool, reducing download and storage work.
+That's it. git-dedup automatically consolidates the new or existing project's history into a shared store in `~/.git-dedup` or if its history already existed there, it reuses it automatically.
 
 **[Documentation](https://git-dedup.ben3d.ca/) · [Source](https://github.com/bhouston/git-dedup) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
 

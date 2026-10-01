@@ -2,6 +2,20 @@
 
 Docusaurus documentation and project site for git-dedup.
 
+git-dedup itself is used like this:
+
+```sh
+npm install -g git-dedup
+
+# check out a new repo automatically using the dedup store
+git-dedup clone https://github.com/you/project.git
+
+# dedup an existing repo into the store
+git-dedup store add ./my-existing-repo
+```
+
+To work on the site:
+
 ```sh
 pnpm --filter git-dedup-website dev
 pnpm --filter git-dedup-website build
