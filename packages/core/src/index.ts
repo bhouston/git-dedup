@@ -1084,6 +1084,23 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           record(repo, 'skipped', 'unsupported object format (requires SHA-1)');
           return;
         }
+        // A fetch from a partial clone with promised blobs fails: upload-pack disables lazy fetching.
+        const promisor = (
+          await git(['config', '--get-regexp', String.raw`^remote\..*\.promisor$`], repo)
+        ).stdout.trim();
+        if (
+          promisor &&
+          (await checked(['rev-list', '--all', '--objects', '--missing=print'], repo))
+            .split('\n')
+            .some((line) => line.startsWith('?'))
+        ) {
+          record(
+            repo,
+            'skipped',
+            'partial clone with missing objects; run "git fetch --refetch" or re-clone without --filter, then add it again',
+          );
+          return;
+        }
         const commonGitdir = await repoCommonGitdir(repo);
         const url = await origin(repo);
         if (!url) {

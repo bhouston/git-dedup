@@ -12,6 +12,8 @@ The pool pins newly seen consumer ref tips during clone, submodule preparation, 
 
 Supported `submodule update --init` commands prepare missing submodule Git directories with the same pool as reference. Recursive updates cover nested modules, including in new worktrees. Other Git commands and unsupported clone forms pass through to native Git, including local source paths, shallow or partial clones, explicit reference options, and SHA-256 repositories.
 
+`store add` skips an existing partial clone that still has promised (not yet downloaded) blobs, because Git cannot serve a complete pack from it. Run `git fetch --refetch` or re-clone without `--filter`, then add it again.
+
 The checkout depends on the pool. See the [storage guide](safety.md) before moving or deleting it.
 
 ## Storage reports
