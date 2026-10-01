@@ -796,7 +796,7 @@ it('streams pool fetch progress to stderr unless the clone is quiet', async () =
     git(['commit', '--allow-empty', '-m', 'second'], join(root, 'source'));
     git(['push', 'origin', 'main'], join(root, 'source'));
     expect(await api.run(['clone', '-q', remote, 'quiet'])).toBe(0);
-    expect(written()).toContain('updating object pool');
+    expect(written()).not.toContain('updating object pool');
     expect(written()).not.toContain('Counting objects');
   } finally {
     output.mockRestore();

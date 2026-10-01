@@ -712,16 +712,28 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return pool;
   }
 
-  async function fetchRemote(root: string, remote: string, key: string, progress = false): Promise<string> {
+  async function fetchRemote(
+    root: string,
+    remote: string,
+    key: string,
+    progress = false,
+    quiet = false,
+  ): Promise<string> {
     const pool = await ensurePool(root);
-    await fetchRemoteObjects(pool, remote, key, progress);
+    await fetchRemoteObjects(pool, remote, key, progress, quiet);
     await registerRemote(root, remote, key);
     return pool;
   }
 
-  async function fetchRemoteObjects(pool: string, remote: string, key: string, progress = false): Promise<void> {
+  async function fetchRemoteObjects(
+    pool: string,
+    remote: string,
+    key: string,
+    progress = false,
+    quiet = false,
+  ): Promise<void> {
     const id = remoteId(key);
-    process.stderr.write(`git-dedup: updating object pool for ${key}\n`);
+    if (!quiet) process.stderr.write(`git-dedup: updating object pool for ${key}\n`);
     await checked(
       [
         '-C',
@@ -838,7 +850,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     try {
       fetched = await withLock(root, async () => {
         poolReused = options.onStorageReport ? await isPresent(poolPath(root)) : false;
-        const pool = await fetchRemote(root, parsed.remote, key, progress).catch((error: unknown) => {
+        const pool = await fetchRemote(root, parsed.remote, key, progress, quiet).catch((error: unknown) => {
           fetchError = error;
           return undefined;
         });
@@ -871,7 +883,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     // Like native clone, activate every submodule, including ones added upstream later.
     const active = await git(['config', 'submodule.active', '.'], destination, true);
     if (active.code !== 0) return active.code;
-    return updateSubmodules(['update', '--init', '--recursive'], destination);
+    return updateSubmodules(['update', '--init', '--recursive', ...(quiet ? ['-q'] : [])], destination);
   }
 
   /**
@@ -908,7 +920,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     await withLock(root, () => pinConsumer(pool, destination, commonGitdir, tips));
   }
 
-  async function seedSubmodules(repo: string): Promise<void> {
+  async function seedSubmodules(repo: string, quiet = false): Promise<void> {
     const modulesFile = join(repo, '.gitmodules');
     if (!(await isPresent(modulesFile))) return;
     const parentRemote = await origin(repo);
@@ -940,7 +952,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       if (await isPresent(gitdir)) continue;
       const root = await storePath();
       await withLock(root, async () => {
-        const pool = await fetchRemote(root, remote, key);
+        const pool = await fetchRemote(root, remote, key, false, quiet);
         await mkdir(dirname(gitdir), { recursive: true });
         await checked(['clone', '--bare', '--reference', pool, remote, gitdir]);
         // Match a native submodule clone: remote-tracking refs, origin/HEAD, and only the default local branch.
@@ -965,6 +977,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
   }
 
   async function updateSubmodules(args: string[], at: string): Promise<number> {
+    const quiet = args.includes('-q') || args.includes('--quiet');
     if (args[0] === 'add') {
       const code = (await git(['submodule', ...args], at, true)).code;
       if (code !== 0) return code;
@@ -972,7 +985,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       if (!target) fallback(args, 'submodule path not recognized');
       else {
         try {
-          await add(resolve(at, target));
+          await add(resolve(at, target), quiet);
         } catch (error) {
           process.stderr.write(`git-dedup: submodule adoption unavailable (${String(error)})\n`);
         }
@@ -995,11 +1008,11 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       return (await git(['submodule', ...args], at, true)).code;
     }
     if (args.includes('--init')) {
-      const init = (await git(['submodule', 'init'], at, true)).code;
+      const init = (await git(['submodule', 'init', ...(quiet ? ['-q'] : [])], at, true)).code;
       if (init !== 0) return init;
     }
     try {
-      await seedSubmodules(repo);
+      await seedSubmodules(repo, quiet);
     } catch (error) {
       fallback(args, `submodule adoption unavailable${gitFailure(error)}`);
     }
@@ -1017,7 +1030,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       if (!match) continue;
       const child = resolve(repo, match[1]!);
       if (!child.startsWith(repo + sep) || !(await isPresent(child))) continue;
-      const nested = await updateSubmodules(['update', '--init', '--recursive'], child);
+      const nested = await updateSubmodules(['update', '--init', '--recursive', ...(quiet ? ['-q'] : [])], child);
       if (nested !== 0) return nested;
     }
     return 0;
@@ -1035,7 +1048,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     }
   }
 
-  async function add(path = cwd): Promise<StoreAddResult> {
+  async function add(path = cwd, quiet = false): Promise<StoreAddResult> {
     const result: StoreAddResult = { added: 0, skipped: 0, failed: 0, repositories: [] };
     const visited = new Set<string>();
     function record(
@@ -1103,19 +1116,19 @@ export function createGitDedup(options: GitDedupOptions = {}) {
             // Checkouts adopted before the consumer registry existed register here.
             await registerConsumer(root, id, commonGitdir);
             record(repo, 'skipped', 'already current');
-            process.stderr.write(`git-dedup: adding ${repo}: already current\n`);
+            if (!quiet) process.stderr.write(`git-dedup: adding ${repo}: already current\n`);
             return;
           }
-          process.stderr.write(`git-dedup: adding ${repo}: packing local objects\n`);
+          if (!quiet) process.stderr.write(`git-dedup: adding ${repo}: packing local objects\n`);
           // Gather loose local objects before adding an alternate; afterwards Git may
           // consider a local object redundant and omit it from a new pack.
           if (!alreadyLinked) await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
           const beforeUniqueBytes = await uniquePackBytes(commonGitdir);
-          process.stderr.write(`git-dedup: adding ${repo}: importing refs\n`);
+          if (!quiet) process.stderr.write(`git-dedup: adding ${repo}: importing refs\n`);
           stage = 'importing refs';
           await pinConsumer(pool, repo, commonGitdir, tips);
           stage = 'sharing objects';
-          process.stderr.write(`git-dedup: adding ${repo}: sharing objects\n`);
+          if (!quiet) process.stderr.write(`git-dedup: adding ${repo}: sharing objects\n`);
           try {
             await setAlternate(commonGitdir, pool);
             await removeLegacyKeeps(commonGitdir);
@@ -1136,7 +1149,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           await registerRemote(root, url, key);
           let refreshError: unknown;
           try {
-            await fetchRemoteObjects(pool, url, key);
+            await fetchRemoteObjects(pool, url, key, false, quiet);
           } catch (error) {
             refreshError = error;
           }
@@ -1539,6 +1552,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     if (args[0] !== 'add') return (await git(['worktree', ...args], at, true)).code;
     let path: string | undefined;
     let noCheckout = false;
+    let quiet = false;
     for (let i = 1; i < args.length; i++) {
       const arg = args[i]!;
       if (arg === '--') {
@@ -1550,6 +1564,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         continue;
       }
       if (arg === '--no-checkout' || arg === '--orphan') noCheckout = true;
+      if (arg === '-q' || arg === '--quiet') quiet = true;
       if (
         [
           '-f',
@@ -1585,7 +1600,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     // Like plain git worktree add, succeed once the worktree exists; submodule setup is extra.
     if (
       (await isPresent(join(target, '.gitmodules'))) &&
-      (await updateSubmodules(['update', '--init', '--recursive'], target)) !== 0
+      (await updateSubmodules(['update', '--init', '--recursive', ...(quiet ? ['-q'] : [])], target)) !== 0
     )
       process.stderr.write(
         `git-dedup: worktree created, but submodule setup failed; retry with \`git submodule update --init --recursive\` in ${target}\n`,

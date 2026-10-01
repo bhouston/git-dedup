@@ -300,6 +300,27 @@ describe('git-dedup CLI', () => {
     expect(adoption).toHaveStderr(/estimated private pack reduction [\d.]+[kMGT]?B; logical pack bytes only/);
   });
 
+  it('stays silent with -q like plain Git', async () => {
+    const { dir, remote } = await gitRemoteFixture();
+    const options = { cwd: dir, env: isolatedEnv(dir), timeout: 20_000 };
+    const git = (args: string[]) => execFileSync('git', args, { env: options.env, stdio: 'pipe' });
+    const work = join(dir, 'super-work');
+    const bare = join(dir, 'remotes', 'team', 'super.git');
+    git(['init', '-q', '--bare', '--initial-branch=main', bare]);
+    git(['clone', '-q', remote, work]);
+    git(['-C', work, 'submodule', 'add', '-q', remote, 'modules/child']);
+    git(['-C', work, '-c', 'user.name=Gitx Test', '-c', 'user.email=test@example.invalid', 'commit', '-qm', 'sub']);
+    git(['-C', work, 'push', '-q', bare, 'HEAD:main']);
+    const quiet = (result: { stdout: string; stderr: string }) => {
+      expect(result).toSucceed();
+      expect(result.stdout).toBe('');
+      expect(result.stderr).toBe('');
+    };
+    quiet(await cli.run(['clone', '-q', '--recurse-submodules', remote.replace('project.git', 'super.git')], options));
+    quiet(await cli.run(['-C', 'super', 'worktree', 'add', '-q', '-b', 'review', '../review'], options));
+    quiet(await cli.run(['-C', 'super', 'submodule', 'add', '-q', remote, 'modules/other'], options));
+  });
+
   it('previews and adds discovered checkouts, including nested repositories and submodules', async () => {
     const { dir, remote } = await gitRemoteFixture();
     const env = isolatedEnv(dir);
