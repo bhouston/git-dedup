@@ -728,6 +728,29 @@ it('preseeds nested submodules during recursive update', async () => {
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], leaf));
 });
 
+it('preseeds nested submodules during recursive update from a subdirectory', async () => {
+  const { root, source, remote, store } = await fixture();
+  git(['-c', 'protocol.git.allow=always', 'submodule', 'add', remote, 'deps/leaf'], source);
+  git(['commit', '-am', 'nested'], source);
+  git(['push', 'origin', 'main'], source);
+  const parent = join(root, 'parent');
+  await mkdir(parent);
+  git(['init'], parent);
+  git(['config', 'user.email', 'test@example.test'], parent);
+  git(['config', 'user.name', 'Test'], parent);
+  git(['-c', 'protocol.git.allow=always', 'submodule', 'add', remote, 'libs/project'], parent);
+  git(['commit', '-am', 'parent'], parent);
+  git(['submodule', 'deinit', '-f', '--all'], parent);
+  await rm(join(parent, '.git', 'modules'), { recursive: true, force: true });
+  const api = createGitDedup({ cwd: join(parent, 'libs'), env: testEnv(root, store) });
+  expect(await api.run(['submodule', 'update', '--init', '--recursive'])).toBe(0);
+  expect(git(['submodule', 'status', '--recursive'], parent)).not.toMatch(/^-/m);
+  const leaf = join(parent, 'libs/project/deps/leaf');
+  expect(git(['show', 'HEAD:hello.txt'], leaf)).toBe('hello');
+  await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], join(parent, 'libs/project')));
+  await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], leaf));
+});
+
 it('resolves relative submodule URLs against the parent remote', async () => {
   const { root, remote, store } = await fixture();
   const parentRemote = join(root, 'remote', 'team', 'parent.git');
