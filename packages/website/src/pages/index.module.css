@@ -199,7 +199,7 @@
 .cards {
   max-width: 1200px;
   margin: auto;
-  padding: 0 1.5rem 6rem;
+  padding: 4rem 1.5rem;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
   gap: 1rem;
@@ -213,11 +213,11 @@
 .card > span {
   color: #2a9479;
   font:
-    700 0.8rem ui-monospace,
+    700 2.4rem ui-monospace,
     monospace;
 }
 .card h3 {
-  margin-top: 2.4rem;
+  margin-top: 1rem;
   letter-spacing: -0.025em;
 }
 .card p {

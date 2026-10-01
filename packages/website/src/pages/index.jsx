@@ -5,104 +5,101 @@ import styles from './index.module.css';
 
 const cards = [
   {
-    number: '01',
-    title: 'One object pool',
-    body: 'One bare Git repository collects objects from all registered remotes. Identical objects share storage.',
+    number: '6x',
+    title: 'Faster checkouts',
+    body: 'Repeat clones, worktrees, and submodules reuse history already on disk. Large checkouts drop from over a minute to about 10 seconds.',
   },
   {
-    number: '02',
-    title: 'Normal working copies',
-    body: 'Clones remain ordinary repositories with their real origin URL. They borrow objects through Git alternates.',
+    number: '70%',
+    title: 'Less disk space',
+    body: 'Every checkout shares one copy of Git history. Across 117 checkouts, Git data dropped from 35.5 GB to 11.1 GB.',
   },
   {
-    number: '03',
-    title: 'Git command passthrough',
-    body: 'Commands outside the supported path run through Git. Your existing Git workflow stays available.',
+    number: '0',
+    title: 'Changes to your workflow',
+    body: 'Checkouts are normal Git repositories. Use git, your editor, and your agents exactly as before.',
   },
 ];
 
 export default function Home() {
   return (
     <Layout
-      title="Many coding agents, one copy of Git history"
-      description="A Git wrapper whose clones, forks, and worktree submodules share one local object pool."
+      title="Faster checkouts, a fraction of the disk space"
+      description="git-dedup shares one copy of Git history across all your clones, worktrees, and submodules. Checkouts are 6x faster and use 70% less disk."
     >
       <header className={styles.hero}>
         <div className={styles.heroInner}>
           <div className={styles.copy}>
             <h1>
-              Many coding agents.
+              Faster checkouts.
               <br />
-              <em>One copy of Git history.</em>
+              <em>A fraction of the disk space.</em>
             </h1>
             <p className={styles.lead}>
-              Agents and editors clone the same repositories for every task. git-dedup is a Git wrapper whose clones,
-              forks, and worktree submodules share one local object pool, so each new checkout reuses the history
-              already on disk.
+              git-dedup is a drop-in replacement for <code>git clone</code> built for fleets of coding agents. It
+              automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses
+              what is already on disk instead of downloading it again.
             </p>
             <pre className={styles.example}>
-              <code>{`# Populate the object pool in ~/.git-dedup.
-git-dedup clone https://github.com/you/project.git project
+              <code>{`npm install -g git-dedup
 
-# Another checkout borrows objects from the same pool.
-git-dedup clone https://github.com/you/project.git project-review
-cd project-review
+# check out a new repo automatically using the dedup store
+git-dedup clone https://github.com/you/project.git
 
-# All normal Git commands work in the checkout.
-git status
-git diff
-git log --oneline`}</code>
+# dedup an existing repo into the store
+git-dedup store add ./my-existing-repo`}</code>
             </pre>
             <p className={styles.performance}>
-              In one typical local setup spanning 117 checkouts (94 distinct Git object databases, with linked worktrees
-              counted once), git-dedup uses 11.1 GB for Git objects versus 35.5 GB without sharing, saving about 24.4 GB
-              (70%). Checkout is also 6x faster for large repos, dropping from over 1 minute to 10 seconds.
+              That's it. git-dedup automatically consolidates the new or existing project's history into a shared store
+              in <code>~/.git-dedup</code> or if its history already existed there, it reuses it automatically. The
+              checkout is a normal Git repository, so keep using <code>git</code> as usual.
             </p>
             <div className={styles.actions}>
               <Link className={styles.primary} to="/docs">
                 Get started <span aria-hidden="true">↗</span>
               </Link>
-              <Link className={styles.secondary} to="/docs/how-it-works">
-                See how it works <span aria-hidden="true">→</span>
+              <Link className={styles.secondary} to="/docs/agents">
+                Set up your agents <span aria-hidden="true">→</span>
               </Link>
             </div>
-            <p className={styles.platform}>TypeScript · Node.js 22+ · macOS and Linux</p>
+            <p className={styles.platform}>Node.js 22+ · macOS and Linux</p>
           </div>
         </div>
       </header>
       <main>
-        <section className={styles.intro}>
-          <div className={styles.sectionHeading}>
-            <p className={styles.kicker}>THE IDEA</p>
-            <h2>
-              More worktrees and clones.
-              <br />
-              Less duplicate data.
-            </h2>
-          </div>
-          <p>
-            Development often means several copies of the same repository: separate tasks, agents, experiments, and
-            worktrees. git-dedup <strong>automatically</strong> puts reusable Git objects in a local store and keeps the
-            consumer repositories connected to it through Git alternates. It manages remote updates and reference paths
-            for you.
-          </p>
-        </section>
-        <section className={styles.cards} aria-label="Design principles">
+        <section className={styles.cards} aria-label="Benefits">
           {cards.map((card) => (
-            <article key={card.number} className={styles.card}>
+            <article key={card.title} className={styles.card}>
               <span>{card.number}</span>
               <h3>{card.title}</h3>
               <p>{card.body}</p>
             </article>
           ))}
         </section>
+        <section className={styles.intro}>
+          <div className={styles.sectionHeading}>
+            <p className={styles.kicker}>WHY I BUILT IT</p>
+            <h2>
+              My agents were waiting on Git.
+              <br />
+              Then my disk filled up.
+            </h2>
+          </div>
+          <p>
+            I run fleets of coding agents, each in its own checkout. Every task started by cloning repositories and
+            submodules from scratch, so agents sat idle waiting on downloads. Then I started running out of disk space,
+            because every checkout held another full copy of the same history. git-dedup fixed both: my agents start
+            dramatically faster, and I got 24 GB of disk back.
+          </p>
+        </section>
         <section className={styles.callout}>
           <div>
             <p className={styles.kicker}>BUILT ON GIT</p>
-            <h2>Start with one clone.</h2>
+            <h2>Dogfooded daily.</h2>
             <p>
-              Try git-dedup on a remote repository, inspect the resulting origin, and compare the object files in the
-              clone and store.
+              git-dedup uses Git's own alternates mechanism, so every checkout stays an ordinary repository with its
+              real origin. We have spent a lot of time running it across our own agent fleets and repositories to make
+              it robust and fast. Worktrees, submodules, forks, and existing checkouts all just work.
             </p>
             <Link to="/docs">Read the getting started guide →</Link>
           </div>
@@ -124,8 +121,8 @@ git log --oneline`}</code>
             <div className={styles.mirror}>
               <span className={styles.nodeIcon}>◆</span>
               <div>
-                <small>LOCAL STORE</small>
-                <strong>one object pool</strong>
+                <small>~/.git-dedup</small>
+                <strong>one shared copy of history</strong>
               </div>
               <span className={styles.shared}>shared</span>
             </div>
@@ -135,17 +132,19 @@ git log --oneline`}</code>
               <span>↘</span>
             </div>
             <div className={styles.clones}>
-              <span>clone A</span>
-              <span>clone B</span>
-              <span>clone C</span>
+              <span>agent A</span>
+              <span>agent B</span>
+              <span>agent C</span>
             </div>
-            <p>Working copies with shared object storage.</p>
+            <p>Every checkout borrows from the same store.</p>
           </figure>
         </section>
         <section className={styles.note}>
-          <strong>Keep the pool available.</strong>
-          <span>Linked checkouts borrow Git objects from the pool. Removing it can make their history unreadable.</span>
-          <Link to="/docs/safety">Read about the store dependency →</Link>
+          <strong>Keep ~/.git-dedup.</strong>
+          <span>
+            Your checkouts read their history from the shared store. Deleting it breaks every repository using it.
+          </span>
+          <Link to="/docs/safety">Read about the store →</Link>
         </section>
       </main>
     </Layout>

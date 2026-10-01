@@ -4,9 +4,9 @@ title: Get started
 slug: /
 ---
 
-**Many coding agents, one copy of Git history.** git-dedup is a Git wrapper whose clones, forks, and worktree submodules share one local object pool. Agents and editors can create a fresh checkout per task without storing the history again. In one typical setup of 117 checkouts, Git objects take 11.1 GB instead of 35.5 GB (70% less). Checkout is also 6x faster for large repos, dropping from over 1 minute to 10 seconds.
+**Faster checkouts, a fraction of the disk space.** git-dedup keeps one shared copy of Git history for all your clones, worktrees, and submodules. Large checkouts are 6x faster, dropping from over a minute to about 10 seconds, and Git data takes 70% less disk (11.1 GB instead of 35.5 GB across 117 checkouts).
 
-Install git-dedup with npm:
+## Install
 
 ```sh
 npm install -g git-dedup
@@ -14,44 +14,40 @@ npm install -g git-dedup
 
 Requires Node.js 22+ and Git on macOS or Linux.
 
-## Clone a repository
+## Clone
 
 ```sh
-# Automatically create or reuse the object pool in ~/.git-dedup.
-git-dedup clone https://github.com/you/project.git project
+# check out a new repo automatically using the dedup store
+git-dedup clone https://github.com/you/project.git
 
-# Borrow from the pool for another checkout.
-git-dedup clone https://github.com/you/project.git project-review
-cd project-review
-
-# Work with Git as usual.
-git status
-git diff
-git log --oneline
+# dedup an existing repo into the store
+git-dedup store add ./my-existing-repo
 ```
 
-## Submodules and worktrees
+That's it. git-dedup automatically consolidates the new or existing project's history into a shared store in `~/.git-dedup` or if its history already existed there, it reuses it automatically. The checkout is a normal Git repository, so keep using `git` as usual.
+
+## Worktrees and submodules
+
+Worktrees and submodules get their history from the store too:
 
 ```sh
+git-dedup clone --recurse-submodules https://github.com/you/project.git
+git-dedup worktree add -b my-task ../my-task
 git-dedup submodule update --init --recursive
-git-dedup worktree add -b review ../review
 ```
 
-## Existing repositories
+## Reclaim space from existing repositories
 
 ```sh
-# Add the current repository to the store.
+# Consolidate one repository.
 git-dedup store add .
 
-# Preview every checkout below a directory before adopting them.
-git-dedup store add ~/Coding --all --dry-run
+# Or every repository under a directory.
 git-dedup store add ~/Coding --all
-
-# View the store and its health checks.
-git-dedup store
-git-dedup store list
 ```
 
-The `--all` sweep follows each checkout's Git ignore rules. It skips `.git` metadata and symlinks. A directory outside a Git worktree has no repository ignore rules, so all of its directory names are eligible for discovery.
+## Keep the store
 
-See the [CLI reference](/docs/cli) for commands or [agent setup](./agents.md) for coding agents.
+Your checkouts read their history from `~/.git-dedup`. Deleting it breaks every repository consolidated into it. See [the store](./safety.md) for moving or detaching checkouts.
+
+Next: [set up your agents](./agents.md) or [your editor](./editors.md), or browse the [CLI reference](/docs/cli).
