@@ -862,6 +862,28 @@ it('prunes objects of a deleted checkout and keeps live consumers valid', async 
   git(['fsck', '--full'], live);
 });
 
+it('keeps an annotated tag that only FETCH_HEAD names after upstream moves it and prune runs', async () => {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'live'])).toBe(0);
+  const live = join(root, 'live');
+  git(['commit', '--allow-empty', '-m', 'tagged'], source);
+  git(['tag', '-a', 'vF', '-m', 'old'], source);
+  git(['push', 'origin', 'vF'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+  // FETCH_HEAD names a tag object that only the pool has and no consumer ref holds.
+  git(['fetch', '--no-tags', 'origin', 'refs/tags/vF'], live);
+  const tag = git(['rev-parse', 'FETCH_HEAD'], live);
+  expect(git(['cat-file', '-t', tag], live)).toBe('tag');
+  git(['tag', '-f', '-a', 'vF', '-m', 'new', 'HEAD~1'], source);
+  git(['push', '--force', 'origin', 'vF'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+
+  await api.prune();
+  expect(git(['cat-file', '-t', tag], live)).toBe('tag');
+  git(['merge', '--ff-only', 'FETCH_HEAD'], live);
+});
+
 it('refuses to prune pins of unregistered checkouts until store add registers them', async () => {
   const { root, remote, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
