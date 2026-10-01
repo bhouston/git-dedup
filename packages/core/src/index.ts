@@ -438,13 +438,20 @@ function checkoutPath(gitdir: string): string {
   return basename(gitdir) === '.git' ? dirname(gitdir) : gitdir;
 }
 
+function alternateLines(content: string): string[] {
+  return content
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 async function setAlternate(gitdir: string, pool: string): Promise<void> {
   const alternate = join(gitdir, 'objects', 'info', 'alternates');
   await mkdir(dirname(alternate), { recursive: true });
   const target = join(pool, 'objects');
-  const existing = await readFile(alternate, 'utf8').catch(() => '');
-  if (existing.split('\n').includes(target)) return;
-  await writeFile(alternate, existing + target + '\n');
+  const lines = alternateLines(await readFile(alternate, 'utf8').catch(() => ''));
+  if (lines.includes(target)) return;
+  await writeFile(alternate, [...lines, target].join('\n') + '\n');
 }
 
 async function removeLegacyKeeps(gitdir: string): Promise<void> {
@@ -942,9 +949,8 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           const marker = join(gitdir, 'gitx-cache.json');
           const state = JSON.stringify({ version: 1, pool, remote: url, key, tips }) + '\n';
           const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
-          const alreadyLinked = (await readFile(alternate, 'utf8').catch(() => ''))
-            .split('\n')
-            .includes(join(pool, 'objects'));
+          const originalAlternates = await readFile(alternate, 'utf8').catch(() => undefined);
+          const alreadyLinked = alternateLines(originalAlternates ?? '').includes(join(pool, 'objects'));
           const registered =
             (await readFile(join(root, 'remotes', `${remoteId(key)}.json`), 'utf8').catch(() => '')) ===
             registration(url, key);
@@ -968,9 +974,16 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           await pinConsumer(pool, repo, commonGitdir, tips);
           stage = 'sharing objects';
           process.stderr.write(`git-dedup: adding ${repo}: sharing objects\n`);
-          await setAlternate(commonGitdir, pool);
-          await removeLegacyKeeps(commonGitdir);
-          await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
+          try {
+            await setAlternate(commonGitdir, pool);
+            await removeLegacyKeeps(commonGitdir);
+            await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
+          } catch (error) {
+            // Restore only until this repack succeeds; afterwards objects it dropped live only in the pool.
+            if (originalAlternates === undefined) await rm(alternate, { force: true });
+            else await writeFile(alternate, originalAlternates);
+            throw error;
+          }
           if (
             (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graph'))) ||
             (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graphs')))
@@ -1056,7 +1069,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
       try {
         const original = await readFile(alternate, 'utf8').catch(() => '');
-        const lines = original.split('\n');
+        const lines = alternateLines(original);
         if (!lines.includes(poolObjects)) {
           record({ path: repo, status: 'skipped', reason: 'not linked to the store' });
           return;
@@ -1068,7 +1081,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           // Without -l, repack copies every object reachable from refs, reflogs, and
           // the indexes of all worktrees, including objects read through the pool.
           await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '--pack-kept-objects'], repo);
-          const remaining = lines.filter((line) => line && line !== poolObjects);
+          const remaining = lines.filter((line) => line !== poolObjects);
           if (remaining.length) await writeFile(alternate, remaining.join('\n') + '\n');
           else await rm(alternate);
           try {
