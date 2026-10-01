@@ -926,6 +926,29 @@ it('unregisters a removed checkout and keeps it and other consumers valid after 
   git(['fsck', '--full'], join(root, 'kept'));
 });
 
+it('pins a local clone of a linked checkout so removing the source and pruning keeps it valid', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const linked = join(root, 'linked');
+  git(['clone', remote, linked], root);
+  git(['config', 'user.email', 'test@example.test'], linked);
+  git(['config', 'user.name', 'Test'], linked);
+  await writeFile(join(linked, 'unpushed.txt'), randomBytes(65536).toString('hex'));
+  git(['add', '.'], linked);
+  git(['commit', '-m', 'unpushed'], linked);
+  expect((await api.add(linked)).added).toBe(1);
+  // A local clone copies the source's alternates, so it borrows from the pool.
+  const copy = join(root, 'copy');
+  expect(await api.run(['clone', '-q', linked, copy])).toBe(0);
+  await expectAlternate(store, join(copy, '.git'));
+  expect(await api.remove(linked)).toMatchObject({ removed: 1, failed: 0 });
+  await api.prune();
+  git(['fsck', '--full'], copy);
+  // A local clone of an unlinked repository is not registered.
+  expect(await api.run(['clone', '-q', join(root, 'source'), 'plain'])).toBe(0);
+  await expect(stat(join(root, 'plain', '.git', 'gitx-consumer-id'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
 async function copiedCheckout() {
   const { root, source, remote, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
