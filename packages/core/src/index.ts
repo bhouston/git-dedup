@@ -890,7 +890,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
    * Runs `git clone` unchanged, then pins the new repository if it borrows from the pool:
    * a local clone of a linked checkout copies its alternates.
    */
-  async function plainClone(args: string[], at: string, prefix: string[] = []): Promise<number> {
+  async function plainClone(args: string[], at: string): Promise<number> {
     // Rather than re-parse Git's options, try each operand as the directory and as Git's guess from it
     // (`.git` appended for --bare/--mirror). Git only clones into a missing or empty directory.
     const candidates: string[] = [];
@@ -899,7 +899,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         const candidate = resolve(at, path);
         if (!(await readdir(candidate).catch(() => [])).length) candidates.push(candidate);
       }
-    const result = await git([...prefix, 'clone', ...args], at, true);
+    const result = await git(['clone', ...args], at, true);
     if (result.code === 0) for (const candidate of new Set(candidates)) await pinBorrower(candidate);
     return result.code;
   }
