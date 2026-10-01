@@ -51,11 +51,13 @@ export async function discoverCheckouts(directory: string, git = 'git'): Promise
   while (pending.length) {
     const { path: current, insideWorktree } = pending.pop()!;
     const entries = await readdir(current, { withFileTypes: true });
-    const hasGit = entries.some((entry) => entry.name === '.git' && (entry.isFile() || entry.isDirectory()));
+    const hasGitEntry = entries.some((entry) => entry.name === '.git' && (entry.isFile() || entry.isDirectory()));
+    // A stale .git entry (e.g. a pruned worktree pointer) must not be treated as a repository.
+    const hasGit = hasGitEntry && (await isInsideWorktree(git, current));
     if (hasGit) candidates.push(current);
     const directories = entries.filter((entry) => entry.isDirectory() && entry.name !== '.git');
     const excluded =
-      insideWorktree || hasGit
+      hasGit || (insideWorktree && !hasGitEntry)
         ? await ignoredDirectories(
             git,
             current,
