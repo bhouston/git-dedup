@@ -558,6 +558,25 @@ it('clones into an existing empty directory through the store', async () => {
   await expectAlternate(store, join(root, 'empty', '.git'));
 });
 
+it('forwards a stuck -C<dir> to Git, which rejects it', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['-Ct5', 'clone', remote])).toBe(129);
+  expect(await api.run(['-Ct5', 'status'])).toBe(129);
+  await expect(stat(join(root, 't5'))).rejects.toThrow();
+  expect((await api.storeInfo()).remoteCount).toBe(0);
+});
+
+it('passes an empty clone destination to Git instead of cloning into the cwd', async () => {
+  const { root, remote, store } = await fixture();
+  const work = join(root, 'work');
+  await mkdir(work);
+  const api = createGitDedup({ cwd: work, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, ''])).toBe(128);
+  expect(await readdir(work)).toEqual([]);
+  expect((await api.storeInfo()).remoteCount).toBe(0);
+});
+
 it('adopts a submodule added with options', async () => {
   const { root, remote, store } = await fixture();
   const parent = join(root, 'parent');
