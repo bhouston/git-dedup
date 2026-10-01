@@ -329,6 +329,22 @@ describe('git-dedup CLI', () => {
     const failing = join(workspace, 'broken');
     git(['init', '-q', failing]);
     git(['-C', failing, 'remote', 'add', 'origin', 'git://127.0.0.1:1/team/missing.git']);
+    git([
+      '-C',
+      failing,
+      '-c',
+      'user.name=Gitx Test',
+      '-c',
+      'user.email=test@example.invalid',
+      'commit',
+      '-q',
+      '--allow-empty',
+      '-m',
+      'lost',
+    ]);
+    // A ref to a missing commit makes adoption fail.
+    const lost = execFileSync('git', ['-C', failing, 'rev-parse', 'HEAD'], { env }).toString().trim();
+    await rm(join(failing, '.git', 'objects', lost.slice(0, 2), lost.slice(2)));
     const options = { cwd: dir, env, timeout: 30_000 };
 
     const preview = await cli.run(['store', 'add', workspace, '--all', '--dry-run'], options);
