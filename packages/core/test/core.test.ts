@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
-import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGitDedup, keyForRemote, type StorageReport } from '../src/index.js';
@@ -175,6 +175,50 @@ it('adds an existing repo including a local-only commit', async () => {
   expect(git(['show', 'HEAD:unique.txt'], consumer)).toBe('local');
   git(['fsck', '--full'], consumer);
   expect((await api.storeInfo()).remoteCount).toBe(1);
+});
+
+it('adds repos with an unborn HEAD and keeps their refs through prune', async () => {
+  const { root, remote, store } = await fixture();
+  const orphan = join(root, 'orphan');
+  git(['clone', remote, orphan], root);
+  git(['config', 'user.email', 'test@example.test'], orphan);
+  git(['config', 'user.name', 'Test'], orphan);
+  git(['commit', '--allow-empty', '-m', 'local'], orphan);
+  const localTip = git(['rev-parse', 'HEAD'], orphan);
+  git(['checkout', '--orphan', 'fresh'], orphan);
+  const bare = join(root, 'bare.git');
+  git(['clone', '--bare', remote, bare], root);
+  git(['symbolic-ref', 'HEAD', 'refs/heads/missing'], bare);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.add(orphan)).toMatchObject({ added: 1, failed: 0 });
+  expect(await api.add(bare)).toMatchObject({ added: 1, failed: 0 });
+  await api.prune();
+  expect(git(['cat-file', '-t', localTip], orphan)).toBe('commit');
+  git(['fsck', '--full'], orphan);
+  git(['fsck', '--full'], bare);
+});
+
+it('keeps an existing alternate that lacks a trailing newline', async () => {
+  const { root, remote, store } = await fixture();
+  const consumer = join(root, 'consumer');
+  const other = join(root, 'other');
+  git(['clone', remote, consumer], root);
+  git(['clone', remote, other], root);
+  git(['config', 'user.email', 'test@example.test'], other);
+  git(['config', 'user.name', 'Test'], other);
+  await writeFile(join(other, 'other.txt'), 'other\n');
+  git(['add', '.'], other);
+  git(['commit', '-m', 'other'], other);
+  git(['fetch', other, 'main:othermain'], consumer);
+  const otherObjects = join(other, '.git', 'objects');
+  const alternates = join(consumer, '.git', 'objects', 'info', 'alternates');
+  await writeFile(alternates, otherObjects);
+  git(['repack', '-a', '-d', '-l'], consumer);
+  git(['fsck', '--full'], consumer);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect((await api.add(consumer)).added).toBe(1);
+  expect(await readFile(alternates, 'utf8')).toBe(`${otherObjects}\n${join(store, 'pool.git', 'objects')}\n`);
+  git(['fsck', '--full'], consumer);
 });
 
 it('skips an unchanged store add rerun without adding pins or refreshing the remote', async () => {
@@ -425,6 +469,24 @@ it('reuses a preseeded gitdir for submodule update', async () => {
   expect(await api.run(['submodule', 'update', '--init'])).toBe(0);
   expect(git(['show', 'HEAD:hello.txt'], join(parent, 'deps/project'))).toBe('hello');
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], join(parent, 'deps/project')));
+});
+
+it('does not preseed a submodule over user files in a non-empty directory', async () => {
+  const { root, remote, store } = await fixture();
+  const parent = join(root, 'parent');
+  await mkdir(parent);
+  git(['init'], parent);
+  git(['config', 'user.email', 'test@example.test'], parent);
+  git(['config', 'user.name', 'Test'], parent);
+  git(['-c', 'protocol.git.allow=always', 'submodule', 'add', remote, 'deps/project'], parent);
+  git(['commit', '-am', 'module'], parent);
+  git(['submodule', 'deinit', '-f', '--all'], parent);
+  await rm(join(parent, '.git', 'modules'), { recursive: true, force: true });
+  const precious = join(parent, 'deps/project', 'hello.txt');
+  await writeFile(precious, 'MY PRECIOUS\n');
+  const api = createGitDedup({ cwd: parent, env: testEnv(root, store) });
+  expect(await api.run(['submodule', 'update', '--init'])).not.toBe(0);
+  expect(await readFile(precious, 'utf8')).toBe('MY PRECIOUS\n');
 });
 
 it('gives a preseeded submodule the native remote-tracking layout', async () => {
@@ -685,6 +747,29 @@ it('preseeds nested submodules during recursive update', async () => {
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], leaf));
 });
 
+it('preseeds nested submodules during recursive update from a subdirectory', async () => {
+  const { root, source, remote, store } = await fixture();
+  git(['-c', 'protocol.git.allow=always', 'submodule', 'add', remote, 'deps/leaf'], source);
+  git(['commit', '-am', 'nested'], source);
+  git(['push', 'origin', 'main'], source);
+  const parent = join(root, 'parent');
+  await mkdir(parent);
+  git(['init'], parent);
+  git(['config', 'user.email', 'test@example.test'], parent);
+  git(['config', 'user.name', 'Test'], parent);
+  git(['-c', 'protocol.git.allow=always', 'submodule', 'add', remote, 'libs/project'], parent);
+  git(['commit', '-am', 'parent'], parent);
+  git(['submodule', 'deinit', '-f', '--all'], parent);
+  await rm(join(parent, '.git', 'modules'), { recursive: true, force: true });
+  const api = createGitDedup({ cwd: join(parent, 'libs'), env: testEnv(root, store) });
+  expect(await api.run(['submodule', 'update', '--init', '--recursive'])).toBe(0);
+  expect(git(['submodule', 'status', '--recursive'], parent)).not.toMatch(/^-/m);
+  const leaf = join(parent, 'libs/project/deps/leaf');
+  expect(git(['show', 'HEAD:hello.txt'], leaf)).toBe('hello');
+  await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], join(parent, 'libs/project')));
+  await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], leaf));
+});
+
 it('resolves relative submodule URLs against the parent remote', async () => {
   const { root, remote, store } = await fixture();
   const parentRemote = join(root, 'remote', 'team', 'parent.git');
@@ -707,6 +792,8 @@ it('resolves relative submodule URLs against the parent remote', async () => {
   const module = join(root, 'parent', 'deps/project');
   expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], module));
+  // Like native clone, later upstream submodules are active.
+  expect(git(['config', '--get', 'submodule.active'], join(root, 'parent'))).toBe('.');
   // VS Code's Git: Clone argument order and --recursive alias.
   expect(await api.run(['clone', parentUrl, join(root, 'parent-vscode'), '--progress', '--recursive'])).toBe(0);
   const vscodeModule = join(root, 'parent-vscode', 'deps/project');
@@ -881,6 +968,28 @@ it('prunes objects of a deleted checkout and keeps live consumers valid', async 
   git(['fsck', '--full'], live);
 });
 
+it('keeps an annotated tag that only FETCH_HEAD names after upstream moves it and prune runs', async () => {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'live'])).toBe(0);
+  const live = join(root, 'live');
+  git(['commit', '--allow-empty', '-m', 'tagged'], source);
+  git(['tag', '-a', 'vF', '-m', 'old'], source);
+  git(['push', 'origin', 'vF'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+  // FETCH_HEAD names a tag object that only the pool has and no consumer ref holds.
+  git(['fetch', '--no-tags', 'origin', 'refs/tags/vF'], live);
+  const tag = git(['rev-parse', 'FETCH_HEAD'], live);
+  expect(git(['cat-file', '-t', tag], live)).toBe('tag');
+  git(['tag', '-f', '-a', 'vF', '-m', 'new', 'HEAD~1'], source);
+  git(['push', '--force', 'origin', 'vF'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+
+  await api.prune();
+  expect(git(['cat-file', '-t', tag], live)).toBe('tag');
+  git(['merge', '--ff-only', 'FETCH_HEAD'], live);
+});
+
 it('refuses to prune pins of unregistered checkouts until store add registers them', async () => {
   const { root, remote, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
@@ -920,6 +1029,75 @@ it('unregisters a removed checkout and keeps it and other consumers valid after 
   expect(() => git(['cat-file', '-e', unique], pool)).toThrow();
   git(['fsck', '--full'], detached);
   git(['fsck', '--full'], join(root, 'kept'));
+});
+
+it('pins a local clone of a linked checkout so removing the source and pruning keeps it valid', async () => {
+  const { root, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const linked = join(root, 'linked');
+  git(['clone', remote, linked], root);
+  git(['config', 'user.email', 'test@example.test'], linked);
+  git(['config', 'user.name', 'Test'], linked);
+  await writeFile(join(linked, 'unpushed.txt'), randomBytes(65536).toString('hex'));
+  git(['add', '.'], linked);
+  git(['commit', '-m', 'unpushed'], linked);
+  expect((await api.add(linked)).added).toBe(1);
+  // A local clone copies the source's alternates, so it borrows from the pool.
+  const copy = join(root, 'copy');
+  expect(await api.run(['clone', '-q', linked, copy])).toBe(0);
+  await expectAlternate(store, join(copy, '.git'));
+  expect(await api.remove(linked)).toMatchObject({ removed: 1, failed: 0 });
+  await api.prune();
+  git(['fsck', '--full'], copy);
+  // A local clone of an unlinked repository is not registered.
+  expect(await api.run(['clone', '-q', join(root, 'source'), 'plain'])).toBe(0);
+  await expect(stat(join(root, 'plain', '.git', 'gitx-consumer-id'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+async function copiedCheckout() {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const original = join(root, 'original');
+  git(['clone', remote, original], root);
+  git(['config', 'user.email', 'test@example.test'], original);
+  git(['config', 'user.name', 'Test'], original);
+  await writeFile(join(original, 'unique.txt'), 'unpushed\n');
+  git(['add', '.'], original);
+  git(['commit', '-m', 'unpushed'], original);
+  expect((await api.add(original)).added).toBe(1);
+  const copy = join(root, 'copy');
+  await cp(original, copy, { recursive: true });
+  return { source, store, api, original, copy, tip: git(['rev-parse', 'HEAD'], original) };
+}
+
+it('keeps the original valid after removing a copied checkout and pruning', async () => {
+  const { api, original, copy, tip } = await copiedCheckout();
+  expect(await api.remove(copy)).toMatchObject({ removed: 1, failed: 0 });
+  await api.prune();
+  expect(git(['rev-parse', 'HEAD'], original)).toBe(tip);
+  git(['fsck', '--full'], original);
+  git(['fsck', '--full'], copy);
+});
+
+it('gives an added copied checkout its own consumer so forgetting it keeps the original', async () => {
+  const { source, store, api, original, copy, tip } = await copiedCheckout();
+  expect((await api.add(copy)).failed).toBe(0);
+  expect(await readFile(join(copy, '.git', 'gitx-consumer-id'), 'utf8')).not.toBe(
+    await readFile(join(original, '.git', 'gitx-consumer-id'), 'utf8'),
+  );
+  expect(await readdir(join(store, 'consumers'))).toHaveLength(2);
+  // Upstream rewrites history, so only consumer pins hold the checkouts' commits.
+  git(['commit', '--amend', '-m', 'rewritten'], source);
+  git(['push', '--force', 'origin', 'main'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+  await api.prune();
+  git(['fsck', '--full'], original);
+  git(['fsck', '--full'], copy);
+  await rm(copy, { recursive: true, force: true });
+  expect(await api.forget(copy)).toEqual([join(copy, '.git')]);
+  await api.prune();
+  expect(git(['rev-parse', 'HEAD'], original)).toBe(tip);
+  git(['fsck', '--full'], original);
 });
 
 it('refuses to prune for a moved checkout until store add registers its new path', async () => {
@@ -1058,6 +1236,41 @@ it('removes a linked worktree checkout through its common gitdir', async () => {
   git(['fsck', '--full'], parent);
   git(['fsck', '--full'], worktree);
   expect(git(['show', 'HEAD:local.txt'], worktree)).toBe('local');
+});
+
+it('keeps objects named only by in-progress merge and cherry-pick state when removing', async () => {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', remote, 'consumer'])).toBe(0);
+  const consumer = join(root, 'consumer');
+  const worktree = join(root, 'worktree');
+  git(['config', 'user.email', 'test@example.test'], consumer);
+  git(['config', 'user.name', 'Test'], consumer);
+  git(['checkout', '-b', 'feature'], source);
+  await writeFile(join(source, 'hello.txt'), 'feature\n');
+  git(['commit', '-am', 'feature'], source);
+  git(['push', 'origin', 'feature'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+  git(['fetch', 'origin'], consumer);
+  const feature = git(['rev-parse', 'origin/feature'], consumer);
+  git(['commit', '--allow-empty', '-m', 'local'], consumer);
+  git(['merge', '--no-commit', '--no-ff', feature], consumer);
+  // A linked worktree has its own state: a conflicted cherry-pick of the same commit.
+  git(['worktree', 'add', '-b', 'second', worktree, 'HEAD~1'], consumer);
+  await writeFile(join(worktree, 'hello.txt'), 'local\n');
+  git(['commit', '-am', 'conflict'], worktree);
+  expect(() => git(['cherry-pick', feature], worktree)).toThrow();
+  git(['update-ref', '-d', 'refs/remotes/origin/feature'], consumer);
+  await rm(join(consumer, '.git', 'FETCH_HEAD'));
+
+  expect(await api.remove(consumer)).toMatchObject({ removed: 1, failed: 0 });
+  expect(git(['for-each-ref'], consumer)).not.toContain(feature);
+  await rm(store, { recursive: true, force: true });
+  expect(git(['cat-file', '-t', feature], consumer)).toBe('commit');
+  git(['commit', '-m', 'merge'], consumer);
+  expect(git(['rev-parse', 'HEAD^2'], consumer)).toBe(feature);
+  expect(git(['rev-parse', 'CHERRY_PICK_HEAD'], worktree)).toBe(feature);
+  git(['fsck', '--full'], consumer);
 });
 
 it.each([
