@@ -2,7 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
-import { mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createGitDedup, keyForRemote, type StorageReport } from '../src/index.js';
@@ -901,6 +901,52 @@ it('unregisters a removed checkout and keeps it and other consumers valid after 
   expect(() => git(['cat-file', '-e', unique], pool)).toThrow();
   git(['fsck', '--full'], detached);
   git(['fsck', '--full'], join(root, 'kept'));
+});
+
+async function copiedCheckout() {
+  const { root, source, remote, store } = await fixture();
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const original = join(root, 'original');
+  git(['clone', remote, original], root);
+  git(['config', 'user.email', 'test@example.test'], original);
+  git(['config', 'user.name', 'Test'], original);
+  await writeFile(join(original, 'unique.txt'), 'unpushed\n');
+  git(['add', '.'], original);
+  git(['commit', '-m', 'unpushed'], original);
+  expect((await api.add(original)).added).toBe(1);
+  const copy = join(root, 'copy');
+  await cp(original, copy, { recursive: true });
+  return { source, store, api, original, copy, tip: git(['rev-parse', 'HEAD'], original) };
+}
+
+it('keeps the original valid after removing a copied checkout and pruning', async () => {
+  const { api, original, copy, tip } = await copiedCheckout();
+  expect(await api.remove(copy)).toMatchObject({ removed: 1, failed: 0 });
+  await api.prune();
+  expect(git(['rev-parse', 'HEAD'], original)).toBe(tip);
+  git(['fsck', '--full'], original);
+  git(['fsck', '--full'], copy);
+});
+
+it('gives an added copied checkout its own consumer so forgetting it keeps the original', async () => {
+  const { source, store, api, original, copy, tip } = await copiedCheckout();
+  expect((await api.add(copy)).failed).toBe(0);
+  expect(await readFile(join(copy, '.git', 'gitx-consumer-id'), 'utf8')).not.toBe(
+    await readFile(join(original, '.git', 'gitx-consumer-id'), 'utf8'),
+  );
+  expect(await readdir(join(store, 'consumers'))).toHaveLength(2);
+  // Upstream rewrites history, so only consumer pins hold the checkouts' commits.
+  git(['commit', '--amend', '-m', 'rewritten'], source);
+  git(['push', '--force', 'origin', 'main'], source);
+  expect(await api.fetch()).toMatchObject({ fetched: 1, failed: 0 });
+  await api.prune();
+  git(['fsck', '--full'], original);
+  git(['fsck', '--full'], copy);
+  await rm(copy, { recursive: true, force: true });
+  expect(await api.forget(copy)).toEqual([join(copy, '.git')]);
+  await api.prune();
+  expect(git(['rev-parse', 'HEAD'], original)).toBe(tip);
+  git(['fsck', '--full'], original);
 });
 
 it('refuses to prune for a moved checkout until store add registers its new path', async () => {
