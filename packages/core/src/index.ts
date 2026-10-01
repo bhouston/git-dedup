@@ -850,7 +850,8 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       const key = remote && (await remoteKey(remote, repo));
       if (!remote || !key) continue;
       const target = resolve(repo, item.path);
-      if (!target.startsWith(repo + sep) || (await isPresent(join(target, '.git')))) continue;
+      // Leave populated paths (an initialized checkout or user files) to native Git, which refuses to clobber them.
+      if (!target.startsWith(repo + sep) || (await readdir(target).catch(() => [])).length > 0) continue;
       const gitPathResult = await git(['rev-parse', '--path-format=absolute', '--git-path', `modules/${name}`], repo);
       if (gitPathResult.code !== 0) continue;
       const gitdir = gitPathResult.stdout.trim();

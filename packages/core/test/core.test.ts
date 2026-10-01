@@ -450,6 +450,24 @@ it('reuses a preseeded gitdir for submodule update', async () => {
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], join(parent, 'deps/project')));
 });
 
+it('does not preseed a submodule over user files in a non-empty directory', async () => {
+  const { root, remote, store } = await fixture();
+  const parent = join(root, 'parent');
+  await mkdir(parent);
+  git(['init'], parent);
+  git(['config', 'user.email', 'test@example.test'], parent);
+  git(['config', 'user.name', 'Test'], parent);
+  git(['-c', 'protocol.git.allow=always', 'submodule', 'add', remote, 'deps/project'], parent);
+  git(['commit', '-am', 'module'], parent);
+  git(['submodule', 'deinit', '-f', '--all'], parent);
+  await rm(join(parent, '.git', 'modules'), { recursive: true, force: true });
+  const precious = join(parent, 'deps/project', 'hello.txt');
+  await writeFile(precious, 'MY PRECIOUS\n');
+  const api = createGitDedup({ cwd: parent, env: testEnv(root, store) });
+  expect(await api.run(['submodule', 'update', '--init'])).not.toBe(0);
+  expect(await readFile(precious, 'utf8')).toBe('MY PRECIOUS\n');
+});
+
 it('gives a preseeded submodule the native remote-tracking layout', async () => {
   const { root, source, remote, store } = await fixture();
   git(['push', 'origin', 'main:feature'], source);
