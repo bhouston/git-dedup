@@ -120,6 +120,66 @@ it('waits for a pool lock held by a live process instead of failing', async () =
   await expectAlternate(store, join(root, 'one', '.git'));
 });
 
+async function lockFixture() {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'gitx-lock-')));
+  roots.push(root);
+  const store = join(root, 'store');
+  await mkdir(store);
+  await writeFile(join(store, '.gitx-store'), 'gitx-store-v2\n');
+  git(['init', '-q', '--bare', join(store, 'pool.git')], root);
+  return { root, store, lock: join(root, '.store.gitx-lock') };
+}
+
+it('lets exactly one of many concurrent waiters reap a stale lock', async () => {
+  const { root, store, lock } = await lockFixture();
+  // The pool gc runs only under the store lock; a mkdir sentinel records any overlap.
+  const gitPath = join(root, 'git-wrapper');
+  await writeFile(
+    gitPath,
+    `#!/bin/sh
+case " $* " in *" gc --prune=never "*)
+  mkdir "${root}/inside" 2>/dev/null || echo overlap >> "${root}/overlaps"
+  sleep 0.2; rmdir "${root}/inside" 2>/dev/null;;
+esac
+exec git "$@"
+`,
+    { mode: 0o755 },
+  );
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store), gitPath });
+  for (let round = 0; round < 4; round++) {
+    await mkdir(lock);
+    await writeFile(join(lock, 'owner'), '999999\n');
+    await utimes(lock, new Date(0), new Date(0));
+    await Promise.all(Array.from({ length: 6 }, () => api.gc()));
+  }
+  await expect(readFile(join(root, 'overlaps'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+}, 20_000);
+
+it('reaps a lock whose heartbeat stopped even when its owner pid is reused', async () => {
+  const { root, store, lock } = await lockFixture();
+  // An unrelated live process now holds the dead holder's pid.
+  const unrelated = spawn('sleep', ['30'], { stdio: 'ignore' });
+  daemons.push(unrelated);
+  // Each clock read jumps 10 s, so the 60 s heartbeat timeout passes within a few polls.
+  const now = performance.now.bind(performance);
+  let jumps = 0;
+  const spy = vi.spyOn(performance, 'now').mockImplementation(() => now() + ++jumps * 10_000);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  try {
+    for (const owner of [`${unrelated.pid}\n`, undefined]) {
+      await mkdir(lock);
+      if (owner) {
+        await writeFile(join(lock, 'owner'), owner);
+        await writeFile(join(lock, 'heartbeat'), '');
+      }
+      expect(await api.gc()).toEqual({ compacted: true });
+    }
+  } finally {
+    spy.mockRestore();
+  }
+  await expect(stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
 it('clones twice into one pool and makes both consumers depend on it', async () => {
   const { root, remote, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
