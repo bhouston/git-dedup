@@ -59,6 +59,22 @@ it('honors nested ignore rules and negation without traversing ignored parents',
   ]);
 });
 
+it('rejects when git check-ignore fails and when the target is not a directory', async () => {
+  const root = await fixture();
+  init(root);
+  await mkdir(join(root, 'child'));
+  const wrapper = join(root, 'failing-git');
+  const real = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
+  await writeFile(
+    wrapper,
+    `#!/bin/sh\ncase "$*" in *check-ignore*) echo broken >&2; exit 128;; esac\nexec '${real}' "$@"\n`,
+    { mode: 0o755 },
+  );
+  await expect(discoverCheckouts(root, wrapper)).rejects.toThrow('git check-ignore failed: broken');
+  await writeFile(join(root, 'file'), '');
+  await expect(discoverCheckouts(join(root, 'file'))).rejects.toThrow('Not a directory');
+});
+
 it('uses the Git executable configured with git-dedup.gitPath', async () => {
   const root = await fixture();
   const project = join(root, 'project');
