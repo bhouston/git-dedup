@@ -836,6 +836,9 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       return 0;
     }
     if (args[0] !== 'update') return (await git(['submodule', ...args], at, true)).code;
+    // Without a pathspec, `git submodule update` from a subdirectory covers the whole superproject.
+    const toplevel = await git(['rev-parse', '--show-toplevel'], at);
+    const repo = toplevel.code === 0 ? toplevel.stdout.trim() : at;
     const unsupported = args.slice(1).find((arg) => !['--init', '--recursive', '--quiet', '-q'].includes(arg));
     if (unsupported) {
       fallback(args, `submodule update ${unsupported} is not supported`);
@@ -850,7 +853,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       if (init !== 0) return init;
     }
     try {
-      await seedSubmodules(at);
+      await seedSubmodules(repo);
     } catch (error) {
       fallback(args, `submodule adoption unavailable${gitFailure(error)}`);
     }
@@ -861,13 +864,13 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     if (!recursive) return (await git(['submodule', ...args], at, true)).code;
     const top = (await git(['submodule', ...args.filter((arg) => arg !== '--recursive')], at, true)).code;
     if (top !== 0) return top;
-    const listing = await git(['config', '--file', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'], at);
+    const listing = await git(['config', '--file', '.gitmodules', '--get-regexp', '^submodule\\..*\\.path$'], repo);
     if (listing.code !== 0) return 0;
     for (const line of listing.stdout.trim().split('\n')) {
       const match = line.match(/^submodule\..*\.path (.+)$/);
       if (!match) continue;
-      const child = resolve(at, match[1]!);
-      if (!child.startsWith(at + sep) || !(await isPresent(child))) continue;
+      const child = resolve(repo, match[1]!);
+      if (!child.startsWith(repo + sep) || !(await isPresent(child))) continue;
       const nested = await updateSubmodules(['update', '--init', '--recursive'], child);
       if (nested !== 0) return nested;
     }
