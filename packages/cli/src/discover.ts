@@ -27,6 +27,8 @@ async function ignoredDirectories(git: string, path: string, names: string[]): P
       if (code === 0 || code === 1) done(Buffer.concat(stdout).toString());
       else reject(new Error(`git check-ignore failed: ${Buffer.concat(stderr).toString().trim()}`));
     });
+    // Git may exit before reading stdin; the close handler reports the real failure.
+    child.stdin.on('error', () => {});
     child.stdin.end(names.join('\0') + '\0');
   });
   return new Set(output.split('\0').filter(Boolean));
