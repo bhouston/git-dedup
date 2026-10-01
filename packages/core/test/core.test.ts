@@ -542,6 +542,31 @@ it('preseeds a submodule in a new worktree', async () => {
   git(['fsck', '--full'], module);
 });
 
+it('keeps worktree add successful when submodule setup fails', async () => {
+  const { root, remote, store } = await fixture();
+  const parent = join(root, 'parent');
+  await mkdir(parent);
+  git(['init'], parent);
+  git(['config', 'user.email', 'test@example.test'], parent);
+  git(['config', 'user.name', 'Test'], parent);
+  git(['-c', 'protocol.git.allow=always', 'submodule', 'add', remote, 'deps/project'], parent);
+  git(['commit', '-am', 'module'], parent);
+  // An unpushed submodule commit that the new worktree cannot fetch.
+  const module = join(parent, 'deps/project');
+  git(['-c', 'user.email=test@example.test', '-c', 'user.name=Test', 'commit', '--allow-empty', '-m', 'local'], module);
+  git(['commit', '-am', 'bump'], parent);
+  const api = createGitDedup({ cwd: parent, env: testEnv(root, store) });
+  const output = vi.spyOn(process.stderr, 'write');
+  const written = () => output.mock.calls.map(([message]) => String(message)).join('');
+  try {
+    expect(await api.run(['worktree', 'add', '-b', 'second', '../worktree'])).toBe(0);
+    expect(written()).toMatch(/git-dedup: .*git submodule update --init --recursive/);
+  } finally {
+    output.mockRestore();
+  }
+  expect(git(['branch', '--show-current'], join(root, 'worktree'))).toBe('second');
+});
+
 it('follows a remote default branch change when refreshing its pool', async () => {
   const { root, source, remote, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
