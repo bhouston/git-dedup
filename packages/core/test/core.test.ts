@@ -1442,3 +1442,20 @@ it.each([
   git(['fsck', '--full'], consumer);
   expect(git(['show', 'HEAD:hello.txt'], consumer)).toBe('hello');
 });
+
+it('skips a partial clone with promised blobs instead of failing', async () => {
+  const { root, source, remote, store } = await fixture();
+  await writeFile(join(source, 'hello.txt'), 'second\n');
+  git(['commit', '-am', 'second'], source);
+  git(['push', 'origin', 'main'], source);
+  git(['config', 'uploadpack.allowFilter', 'true'], join(root, 'remote', 'team', 'project.git'));
+  const partial = join(root, 'partial');
+  git(['clone', '--filter=blob:none', '--no-checkout', remote, partial], root);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.add(partial)).toMatchObject({
+    added: 0,
+    skipped: 1,
+    failed: 0,
+    repositories: [{ path: partial, status: 'skipped', reason: expect.stringContaining('partial clone') }],
+  });
+});
