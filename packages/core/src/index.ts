@@ -1085,8 +1085,15 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           return;
         }
         // A fetch from a partial clone with promised blobs fails: upload-pack disables lazy fetching.
-        const missing = await checked(['rev-list', '--all', '--objects', '--missing=print'], repo);
-        if (missing.split('\n').some((line) => line.startsWith('?'))) {
+        const promisor = (
+          await git(['config', '--get-regexp', String.raw`^remote\..*\.promisor$`], repo)
+        ).stdout.trim();
+        if (
+          promisor &&
+          (await checked(['rev-list', '--all', '--objects', '--missing=print'], repo))
+            .split('\n')
+            .some((line) => line.startsWith('?'))
+        ) {
           record(
             repo,
             'skipped',
