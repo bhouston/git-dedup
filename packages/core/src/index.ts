@@ -428,6 +428,20 @@ async function registeredConsumers(root: string): Promise<Map<string, string>> {
   return consumers;
 }
 
+/** Pseudorefs and in-progress rebase or cherry-pick state can name fetched commits no ref holds. */
+async function stateOids(gitdir: string): Promise<string[]> {
+  const files = ['FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'REBASE_HEAD'].map(
+    (name) => join(gitdir, name),
+  );
+  for (const directory of ['rebase-merge', 'rebase-apply', 'sequencer'])
+    for (const entry of await readdir(join(gitdir, directory), { withFileTypes: true }).catch(() => []))
+      if (entry.isFile()) files.push(join(gitdir, directory, entry.name));
+  const oids: string[] = [];
+  for (const file of files)
+    oids.push(...((await readFile(file, 'utf8').catch(() => '')).match(/\b[0-9a-f]{40}\b/g) ?? []));
+  return oids;
+}
+
 async function carriesConsumerId(gitdir: string, id: string): Promise<boolean> {
   const current = await readFile(join(gitdir, 'gitx-consumer-id'), 'utf8').catch((error: NodeJS.ErrnoException) => {
     if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return '';
@@ -440,13 +454,20 @@ function checkoutPath(gitdir: string): string {
   return basename(gitdir) === '.git' ? dirname(gitdir) : gitdir;
 }
 
+function alternateLines(content: string): string[] {
+  return content
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean);
+}
+
 async function setAlternate(gitdir: string, pool: string): Promise<void> {
   const alternate = join(gitdir, 'objects', 'info', 'alternates');
   await mkdir(dirname(alternate), { recursive: true });
   const target = join(pool, 'objects');
-  const existing = await readFile(alternate, 'utf8').catch(() => '');
-  if (existing.split('\n').includes(target)) return;
-  await writeFile(alternate, existing + target + '\n');
+  const lines = alternateLines(await readFile(alternate, 'utf8').catch(() => ''));
+  if (lines.includes(target)) return;
+  await writeFile(alternate, [...lines, target].join('\n') + '\n');
 }
 
 async function removeLegacyKeeps(gitdir: string): Promise<void> {
@@ -458,11 +479,30 @@ async function removeLegacyKeeps(gitdir: string): Promise<void> {
   }
 }
 
-async function consumerId(commonGitdir: string): Promise<string> {
+/** True when `id` is registered to a different gitdir that still carries it, so `gitdir` is a copy (cp -R). */
+async function ownedElsewhere(root: string, id: string, gitdir: string): Promise<boolean> {
+  const owner = await readFile(join(root, 'consumers', `${id}.json`), 'utf8').then(
+    (text) => (JSON.parse(text) as { gitdir?: unknown }).gitdir,
+    () => undefined,
+  );
+  return (
+    typeof owner === 'string' &&
+    (await canonicalPath(owner)) !== (await canonicalPath(gitdir)) &&
+    (await carriesConsumerId(owner, id))
+  );
+}
+
+async function consumerId(root: string, commonGitdir: string): Promise<string> {
   // Shared across linked worktrees so a tip is pinned only once per object database.
   const path = join(commonGitdir, 'gitx-consumer-id');
   const existing = (await readFile(path, 'utf8').catch(() => '')).trim();
-  if (/^[a-f0-9-]{36}$/.test(existing)) return existing;
+  if (/^[a-f0-9-]{36}$/.test(existing)) {
+    if (!(await ownedElsewhere(root, existing, commonGitdir))) return existing;
+    // A copied checkout must not share the original's pins or registration.
+    const id = randomUUID();
+    await writeFile(path, `${id}\n`);
+    return id;
+  }
   const id = randomUUID();
   try {
     await writeFile(path, `${id}\n`, { flag: 'wx' });
@@ -673,7 +713,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     // cannot be copied into a files-backed pool: refs differing only by case
     // collide on case-insensitive filesystems. Object IDs are safe ref names,
     // and one pin per distinct tip preserves the same reachability.
-    const id = await consumerId(commonGitdir);
+    const id = await consumerId(dirname(pool), commonGitdir);
     // Register before pinning: prune refuses to run while pins lack a registration.
     await registerConsumer(dirname(pool), id, commonGitdir);
     const missing = await unpinnedTips(pool, id, tips);
@@ -780,7 +820,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     if (!(await isPresent(join(destination, '.git')))) return;
     const commonGitdir = await repoCommonGitdir(destination);
     const alternates = await readFile(join(commonGitdir, 'objects', 'info', 'alternates'), 'utf8').catch(() => '');
-    if (!alternates.split('\n').includes(join(pool, 'objects'))) return;
+    if (!alternateLines(alternates).includes(join(pool, 'objects'))) return;
     // The source's pins hold these objects until this pin lands.
     const tips = await consumerTips(destination);
     await withLock(root, () => pinConsumer(pool, destination, commonGitdir, tips));
@@ -963,15 +1003,14 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           const marker = join(gitdir, 'gitx-cache.json');
           const state = JSON.stringify({ version: 1, pool, remote: url, key, tips }) + '\n';
           const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
-          const alreadyLinked = (await readFile(alternate, 'utf8').catch(() => ''))
-            .split('\n')
-            .includes(join(pool, 'objects'));
+          const originalAlternates = await readFile(alternate, 'utf8').catch(() => undefined);
+          const alreadyLinked = alternateLines(originalAlternates ?? '').includes(join(pool, 'objects'));
           const registered =
             (await readFile(join(root, 'remotes', `${remoteId(key)}.json`), 'utf8').catch(() => '')) ===
             registration(url, key);
           const stateMatches =
             poolReused && alreadyLinked && registered && (await readFile(marker, 'utf8').catch(() => '')) === state;
-          const id = await consumerId(commonGitdir);
+          const id = await consumerId(root, commonGitdir);
           if (stateMatches && !(await unpinnedTips(pool, id, tips)).length) {
             // Checkouts adopted before the consumer registry existed register here.
             await registerConsumer(root, id, commonGitdir);
@@ -989,9 +1028,16 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           await pinConsumer(pool, repo, commonGitdir, tips);
           stage = 'sharing objects';
           process.stderr.write(`git-dedup: adding ${repo}: sharing objects\n`);
-          await setAlternate(commonGitdir, pool);
-          await removeLegacyKeeps(commonGitdir);
-          await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
+          try {
+            await setAlternate(commonGitdir, pool);
+            await removeLegacyKeeps(commonGitdir);
+            await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '-l'], repo);
+          } catch (error) {
+            // Restore only until this repack succeeds; afterwards objects it dropped live only in the pool.
+            if (originalAlternates === undefined) await rm(alternate, { force: true });
+            else await writeFile(alternate, originalAlternates);
+            throw error;
+          }
           if (
             (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graph'))) ||
             (await isPresent(join(commonGitdir, 'objects', 'info', 'commit-graphs')))
@@ -1077,7 +1123,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
       try {
         const original = await readFile(alternate, 'utf8').catch(() => '');
-        const lines = original.split('\n');
+        const lines = alternateLines(original);
         if (!lines.includes(poolObjects)) {
           record({ path: repo, status: 'skipped', reason: 'not linked to the store' });
           return;
@@ -1086,20 +1132,47 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         // Lock without initializing: removal must never create a store.
         await lockDirectory(storeLock(root), async () => {
           process.stderr.write(`git-dedup: removing ${repo}: copying shared objects\n`);
-          // Without -l, repack copies every object reachable from refs, reflogs, and
-          // the indexes of all worktrees, including objects read through the pool.
-          await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '--pack-kept-objects'], repo);
-          const remaining = lines.filter((line) => line && line !== poolObjects);
-          if (remaining.length) await writeFile(alternate, remaining.join('\n') + '\n');
-          else await rm(alternate);
+          // Repack and fsck ignore in-progress merge, cherry-pick, and rebase state, so pin the
+          // objects it names with temporary refs. Names that are already missing stay missing.
+          const named = new Set<string>();
+          for (const gitdir of gitdirs) for (const oid of await stateOids(gitdir)) named.add(oid);
+          const present = named.size
+            ? (await checked(['cat-file', '--batch-check=%(objectname)'], repo, false, [...named].join('\n') + '\n'))
+                .split('\n')
+                .filter((line) => /^[0-9a-f]{40}$/.test(line))
+            : [];
           try {
-            await checked(['fsck', '--connectivity-only'], repo);
-          } catch (error) {
-            await writeFile(alternate, original);
-            throw error;
+            if (present.length)
+              await checked(
+                ['update-ref', '--stdin'],
+                repo,
+                false,
+                present.map((oid) => `update refs/gitx-detach/${oid} ${oid}\n`).join(''),
+              );
+            // Without -l, repack copies every object reachable from refs, reflogs, and
+            // the indexes of all worktrees, including objects read through the pool.
+            await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '--pack-kept-objects'], repo);
+            const remaining = lines.filter((line) => line !== poolObjects);
+            if (remaining.length) await writeFile(alternate, remaining.join('\n') + '\n');
+            else await rm(alternate);
+            try {
+              await checked(['fsck', '--connectivity-only'], repo);
+            } catch (error) {
+              await writeFile(alternate, original);
+              throw error;
+            }
+          } finally {
+            if (present.length)
+              await checked(
+                ['update-ref', '--stdin'],
+                repo,
+                false,
+                present.map((oid) => `delete refs/gitx-detach/${oid}\n`).join(''),
+              );
           }
           const id = (await readFile(join(commonGitdir, 'gitx-consumer-id'), 'utf8').catch(() => '')).trim();
-          if (/^[a-f0-9-]{36}$/.test(id)) {
+          // A copy carrying another live checkout's ID detaches without releasing that checkout's pins.
+          if (/^[a-f0-9-]{36}$/.test(id) && !(await ownedElsewhere(root, id, commonGitdir))) {
             const pins = await checked([
               '-C',
               pool,
@@ -1222,16 +1295,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         // Git always has the empty tree, so it needs no pin.
         if (tree.stdout.trim() !== '4b825dc642cb6eb9a060e54bf8d69288fbee4904') tips.add(tree.stdout.trim());
       }
-      // Pseudorefs and in-progress rebase or cherry-pick state can name fetched commits no ref holds.
-      const files = ['FETCH_HEAD', 'ORIG_HEAD', 'MERGE_HEAD', 'CHERRY_PICK_HEAD', 'REVERT_HEAD', 'REBASE_HEAD'].map(
-        (name) => join(gitdir, name),
-      );
-      for (const directory of ['rebase-merge', 'rebase-apply', 'sequencer'])
-        for (const entry of await readdir(join(gitdir, directory), { withFileTypes: true }).catch(() => []))
-          if (entry.isFile()) files.push(join(gitdir, directory, entry.name));
-      for (const file of files)
-        for (const oid of (await readFile(file, 'utf8').catch(() => '')).match(/\b[0-9a-f]{40}\b/g) ?? [])
-          if (!tips.has(oid)) extra.add(oid);
+      for (const oid of await stateOids(gitdir)) if (!tips.has(oid)) extra.add(oid);
     }
     // Commits held only by reflogs or state files; pin the tips of each abandoned history.
     const abandoned = await checked(
