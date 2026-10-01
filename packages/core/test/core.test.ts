@@ -688,6 +688,8 @@ it('resolves relative submodule URLs against the parent remote', async () => {
   const module = join(root, 'parent', 'deps/project');
   expect(git(['show', 'HEAD:hello.txt'], module)).toBe('hello');
   await expectAlternate(store, git(['rev-parse', '--absolute-git-dir'], module));
+  // Like native clone, later upstream submodules are active.
+  expect(git(['config', '--get', 'submodule.active'], join(root, 'parent'))).toBe('.');
   // VS Code's Git: Clone argument order and --recursive alias.
   expect(await api.run(['clone', parentUrl, join(root, 'parent-vscode'), '--progress', '--recursive'])).toBe(0);
   const vscodeModule = join(root, 'parent-vscode', 'deps/project');

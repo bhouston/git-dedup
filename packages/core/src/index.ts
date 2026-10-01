@@ -761,8 +761,11 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     });
     if (options.onStorageReport)
       emitStorageReport({ operation: 'clone', repository: destination, poolReused, estimatedSavedBytes: 0 });
-    if (parsed.recurse) return updateSubmodules(['update', '--init', '--recursive'], destination);
-    return 0;
+    if (!parsed.recurse) return 0;
+    // Like native clone, activate every submodule, including ones added upstream later.
+    const active = await git(['config', 'submodule.active', '.'], destination, true);
+    if (active.code !== 0) return active.code;
+    return updateSubmodules(['update', '--init', '--recursive'], destination);
   }
 
   async function seedSubmodules(repo: string): Promise<void> {
@@ -841,7 +844,9 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       fallback(args, `submodule update ${unsupported} is not supported`);
       return (await git(['submodule', ...args], at, true)).code;
     }
-    if ((await git(['config', '--get', 'submodule.active'], at)).code === 0) {
+    // The native clone default '.' activates every submodule, which seeding already handles.
+    const active = await git(['config', '--get-all', 'submodule.active'], at);
+    if (active.code === 0 && active.stdout.trim() !== '.') {
       fallback(args, 'submodule.active is configured');
       return (await git(['submodule', ...args], at, true)).code;
     }
