@@ -91,3 +91,15 @@ it('uses the Git executable configured with git-dedup.gitPath', async () => {
   expect((await discoverCheckouts(root, git)).map(({ path }) => path)).toEqual([project]);
   expect(await readFile(log, 'utf8')).toContain('rev-parse --absolute-git-dir');
 });
+
+it('skips stale worktree .git files and still finds valid checkouts', async () => {
+  const root = await fixture();
+  const valid = join(root, 'valid');
+  init(valid);
+  await mkdir(join(root, 'stale', 'child'), { recursive: true });
+  await writeFile(join(root, 'stale', '.git'), 'gitdir: /definitely/missing/gitdir\n');
+  await mkdir(join(valid, 'inner', 'stale2'), { recursive: true });
+  await writeFile(join(valid, 'inner', 'stale2', '.git'), 'gitdir: /definitely/missing/gitdir\n');
+
+  expect((await discoverCheckouts(root)).map(({ path }) => path)).toEqual([valid]);
+});
