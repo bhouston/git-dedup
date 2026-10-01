@@ -1114,6 +1114,40 @@ it('pins a local clone of a linked checkout so removing the source and pruning k
   await expect(stat(join(root, 'plain', '.git', 'gitx-consumer-id'))).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+it('pins local clones of a linked checkout that fall back to plain Git or land where Git names them', async () => {
+  const { root, remote, store } = await fixture();
+  const env = testEnv(root, store);
+  const api = createGitDedup({ cwd: root, env });
+  const linked = join(root, 'linked');
+  git(['clone', remote, linked], root);
+  git(['config', 'user.email', 'test@example.test'], linked);
+  git(['config', 'user.name', 'Test'], linked);
+  await writeFile(join(linked, 'unpushed.txt'), randomBytes(65536).toString('hex'));
+  git(['add', '.'], linked);
+  git(['commit', '-m', 'unpushed'], linked);
+  expect((await api.add(linked)).added).toBe(1);
+  // Unsupported options forward to plain Git; the destination is the gitdir for --bare and --mirror.
+  expect(await api.run(['clone', '-q', '--bare', linked, 'bare.git'])).toBe(0);
+  expect(await api.run(['clone', '-q', '--mirror', linked])).toBe(0);
+  expect(await api.run(['clone', '-q', '-o', 'upstream', linked, 'renamed'])).toBe(0);
+  expect(await api.run(['clone', '-q', '--separate-git-dir', 'separate.git', linked, 'separate'])).toBe(0);
+  // Git strips `//.git` and clones into `linked`, a name git-dedup used to miscompute.
+  const sub = join(root, 'sub');
+  await mkdir(sub);
+  expect(await createGitDedup({ cwd: sub, env }).run(['clone', '-q', `${linked}//.git`])).toBe(0);
+  const clones = ['bare.git', 'linked.git', 'renamed', 'separate', join('sub', 'linked')].map((path) =>
+    join(root, path),
+  );
+  await expectAlternate(store, join(root, 'bare.git'));
+  await expectAlternate(store, join(root, 'separate.git'));
+  expect(await api.remove(linked)).toMatchObject({ removed: 1, failed: 0 });
+  await api.prune();
+  for (const clone of clones) git(['fsck', '--full'], clone);
+  // A bare local clone of an unlinked repository is not registered.
+  expect(await api.run(['clone', '-q', '--bare', join(root, 'source'), 'plain.git'])).toBe(0);
+  await expect(stat(join(root, 'plain.git', 'gitx-consumer-id'))).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
 async function copiedCheckout() {
   const { root, source, remote, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });

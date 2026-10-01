@@ -225,10 +225,10 @@ function parseClone(
 }
 
 function defaultCloneName(remote: string): string {
-  // Like Git, a local `repo/.git` clones into `repo`.
+  // Like Git, a local `repo/.git` (or `repo//.git`) clones into `repo`.
   return remote
     .replace(/\/+$/, '')
-    .replace(/\/\.git$/, '')
+    .replace(/\/+\.git$/, '')
     .split(/[/:]/)
     .at(-1)!
     .replace(/\.git$/, '');
@@ -797,15 +797,16 @@ export function createGitDedup(options: GitDedupOptions = {}) {
 
   async function clone(args: string[], effectiveCwd: string): Promise<number | undefined> {
     const parsed = parseClone(args);
-    if (typeof parsed === 'string') return fallback(args, parsed);
+    if (typeof parsed === 'string') {
+      fallback(args, parsed);
+      return plainClone(args, effectiveCwd);
+    }
     const key = await remoteKey(parsed.remote, effectiveCwd);
-    const destination = resolve(effectiveCwd, parsed.destination ?? defaultCloneName(parsed.remote));
     if (!key) {
       fallback(args, 'remote is not a supported network URL');
-      const result = await git(['clone', ...args], effectiveCwd, true);
-      if (result.code === 0) await pinBorrower(destination);
-      return result.code;
+      return plainClone(args, effectiveCwd);
     }
+    const destination = resolve(effectiveCwd, parsed.destination ?? defaultCloneName(parsed.remote));
     // Like Git, clone into a missing or empty directory.
     const entries = await readdir(destination).catch((error: NodeJS.ErrnoException) =>
       error.code === 'ENOENT' ? [] : undefined,
@@ -862,12 +863,32 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     return updateSubmodules(['update', '--init', '--recursive'], destination);
   }
 
-  /** A local clone of a linked checkout copies its alternates and borrows from the pool; pin it like any clone. */
+  /**
+   * Runs `git clone` unchanged, then pins the new repository if it borrows from the pool:
+   * a local clone of a linked checkout copies its alternates.
+   */
+  async function plainClone(args: string[], at: string, prefix: string[] = []): Promise<number> {
+    // Rather than re-parse Git's options, try each operand as the directory and as Git's guess from it
+    // (`.git` appended for --bare/--mirror). Git only clones into a missing or empty directory.
+    const candidates: string[] = [];
+    for (const operand of args.filter((arg, i) => !arg.startsWith('-') || args.slice(0, i).includes('--')))
+      for (const path of [operand, defaultCloneName(operand), `${defaultCloneName(operand)}.git`]) {
+        const candidate = resolve(at, path);
+        if (!(await readdir(candidate).catch(() => [])).length) candidates.push(candidate);
+      }
+    const result = await git([...prefix, 'clone', ...args], at, true);
+    if (result.code === 0) for (const candidate of new Set(candidates)) await pinBorrower(candidate);
+    return result.code;
+  }
+
   async function pinBorrower(destination: string): Promise<void> {
+    // A worktree (or --separate-git-dir gitfile) at the destination, or a bare/mirror gitdir that is the destination.
+    if (!(await isPresent(join(destination, '.git')))) {
+      const gitdir = await git(['rev-parse', '--absolute-git-dir'], destination).catch(() => undefined);
+      if (gitdir?.code !== 0 || gitdir.stdout.trim() !== (await canonicalPath(destination))) return;
+    }
     const root = await storePath();
     const pool = poolPath(root);
-    // ponytail: destination comes from defaultCloneName; unusual local names such as `..` are not recognized.
-    if (!(await isPresent(join(destination, '.git')))) return;
     const commonGitdir = await repoCommonGitdir(destination);
     const alternates = await readFile(join(commonGitdir, 'objects', 'info', 'alternates'), 'utf8').catch(() => '');
     if (!alternateLines(alternates).includes(join(pool, 'objects'))) return;
@@ -1575,6 +1596,8 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         continue;
       }
       if (managed) fallback(parsed.rest, `global option ${arg.split('=')[0]} is not supported`);
+      // ponytail: a clone forwarded here (or with repository environment variables) is not checked for pool
+      // borrowing; options like -C and --git-dir move where it lands. Pin it with `store add` if needed.
       return (await git(args, cwd, true)).code;
     }
     if (parsed.cwd !== cwd) {
