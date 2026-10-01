@@ -463,11 +463,30 @@ async function removeLegacyKeeps(gitdir: string): Promise<void> {
   }
 }
 
-async function consumerId(commonGitdir: string): Promise<string> {
+/** True when `id` is registered to a different gitdir that still carries it, so `gitdir` is a copy (cp -R). */
+async function ownedElsewhere(root: string, id: string, gitdir: string): Promise<boolean> {
+  const owner = await readFile(join(root, 'consumers', `${id}.json`), 'utf8').then(
+    (text) => (JSON.parse(text) as { gitdir?: unknown }).gitdir,
+    () => undefined,
+  );
+  return (
+    typeof owner === 'string' &&
+    (await canonicalPath(owner)) !== (await canonicalPath(gitdir)) &&
+    (await carriesConsumerId(owner, id))
+  );
+}
+
+async function consumerId(root: string, commonGitdir: string): Promise<string> {
   // Shared across linked worktrees so a tip is pinned only once per object database.
   const path = join(commonGitdir, 'gitx-consumer-id');
   const existing = (await readFile(path, 'utf8').catch(() => '')).trim();
-  if (/^[a-f0-9-]{36}$/.test(existing)) return existing;
+  if (/^[a-f0-9-]{36}$/.test(existing)) {
+    if (!(await ownedElsewhere(root, existing, commonGitdir))) return existing;
+    // A copied checkout must not share the original's pins or registration.
+    const id = randomUUID();
+    await writeFile(path, `${id}\n`);
+    return id;
+  }
   const id = randomUUID();
   try {
     await writeFile(path, `${id}\n`, { flag: 'wx' });
@@ -678,7 +697,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     // cannot be copied into a files-backed pool: refs differing only by case
     // collide on case-insensitive filesystems. Object IDs are safe ref names,
     // and one pin per distinct tip preserves the same reachability.
-    const id = await consumerId(commonGitdir);
+    const id = await consumerId(dirname(pool), commonGitdir);
     // Register before pinning: prune refuses to run while pins lack a registration.
     await registerConsumer(dirname(pool), id, commonGitdir);
     const missing = await unpinnedTips(pool, id, tips);
@@ -956,7 +975,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
             registration(url, key);
           const stateMatches =
             poolReused && alreadyLinked && registered && (await readFile(marker, 'utf8').catch(() => '')) === state;
-          const id = await consumerId(commonGitdir);
+          const id = await consumerId(root, commonGitdir);
           if (stateMatches && !(await unpinnedTips(pool, id, tips)).length) {
             // Checkouts adopted before the consumer registry existed register here.
             await registerConsumer(root, id, commonGitdir);
@@ -1091,7 +1110,8 @@ export function createGitDedup(options: GitDedupOptions = {}) {
             throw error;
           }
           const id = (await readFile(join(commonGitdir, 'gitx-consumer-id'), 'utf8').catch(() => '')).trim();
-          if (/^[a-f0-9-]{36}$/.test(id)) {
+          // A copy carrying another live checkout's ID detaches without releasing that checkout's pins.
+          if (/^[a-f0-9-]{36}$/.test(id) && !(await ownedElsewhere(root, id, commonGitdir))) {
             const pins = await checked([
               '-C',
               pool,
