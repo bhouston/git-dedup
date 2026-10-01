@@ -10,7 +10,7 @@
 
 **Faster checkouts, a fraction of the disk space.**
 
-git-dedup is a drop-in replacement for `git clone` built for fleets of coding agents. It automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again.
+git-dedup is a wrapper around `git` built for fleets of coding agents. It forwards ordinary Git commands unchanged and automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again.
 
 - **6x faster checkouts.** Large checkouts drop from over a minute to about 10 seconds.
 - **70% less disk.** Across 117 checkouts, Git data dropped from 35.5 GB to 11.1 GB.
