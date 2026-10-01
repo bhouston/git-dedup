@@ -1298,6 +1298,19 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       }
       for (const oid of await stateOids(gitdir)) if (!tips.has(oid)) extra.add(oid);
     }
+    // rev-list peels annotated tags to commits, so pin state-file tags (and other non-commits) directly.
+    if (extra.size)
+      for (const line of (
+        await checked(
+          ['--git-dir', commonGitdir, 'cat-file', '--batch-check=%(objectname) %(objecttype)'],
+          commonGitdir,
+          false,
+          [...extra].join('\n') + '\n',
+        )
+      ).split('\n')) {
+        const [oid, type] = line.split(' ');
+        if (type && type !== 'commit' && type !== 'missing') tips.add(oid!);
+      }
     // Commits held only by reflogs or state files; pin the tips of each abandoned history.
     const abandoned = await checked(
       ['--git-dir', commonGitdir, 'rev-list', '--parents', '--ignore-missing', '--reflog', ...extra, '--not', '--all'],
