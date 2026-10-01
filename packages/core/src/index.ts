@@ -1,7 +1,7 @@
 import { execFile, spawn } from 'node:child_process';
 import { promisify } from 'node:util';
 import { constants } from 'node:fs';
-import { access, mkdir, readdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import { access, mkdir, readdir, readFile, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { homedir, constants as osConstants } from 'node:os';
 import { basename, delimiter, dirname, join, resolve, sep } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
@@ -114,11 +114,13 @@ function delay(ms: number): Promise<void> {
 
 function keyForRemote(remote: string): string | undefined {
   let host: string;
+  let port = '';
+  let user: string | undefined;
   let pathname: string;
-  if (/^[^/@:]+@[^/:]+:.+/.test(remote)) {
-    const match = remote.match(/^[^/@:]+@([^/:]+):(.+)$/)!;
-    host = match[1]!;
-    pathname = match[2]!;
+  const scp = remote.match(/^([^/@:]+)@([^/:]+):(.+)$/);
+  if (scp) {
+    [, user, host, pathname] = scp as [string, string, string, string];
+    if (!pathname.startsWith('/')) pathname = `/~/${pathname}`;
   } else {
     let url: URL;
     try {
@@ -127,8 +129,17 @@ function keyForRemote(remote: string): string | undefined {
       return undefined;
     }
     if (!['https:', 'http:', 'ssh:', 'git:'].includes(url.protocol)) return undefined;
-    host = url.hostname + (url.port ? `_${url.port}` : '');
+    host = url.hostname;
+    // `:` cannot appear in a host name, so ports never collide with hosts.
+    port = url.port ? `:${url.port}` : '';
+    if (url.protocol === 'ssh:') user = url.username;
     pathname = url.pathname;
+  }
+  // Home-relative SSH paths differ per user; `git` is the shared hosting account convention.
+  let home = '';
+  if (user !== undefined && pathname.startsWith('/~/')) {
+    pathname = pathname.slice(2);
+    if (user !== 'git') home = `~${user}/`;
   }
   const parts = pathname
     .replace(/^\/+/, '')
@@ -141,7 +152,7 @@ function keyForRemote(remote: string): string | undefined {
   )
     return undefined;
   if (!/^[a-zA-Z0-9._-]+$/.test(host)) return undefined;
-  return `${host.toLowerCase()}/${parts.join('/')}`;
+  return `${host.toLowerCase()}${port}/${home}${parts.join('/')}`;
 }
 
 async function directorySize(path: string): Promise<number> {
@@ -309,35 +320,84 @@ async function canonicalPath(path: string): Promise<string> {
   return parent === path ? path : join(await canonicalPath(parent), basename(path));
 }
 
+// A holder touches its heartbeat file; a waiter that sees the lock unchanged this long treats it as abandoned.
+const LOCK_STALE_MS = 60_000;
+
 async function lockDirectory<T>(lock: string, action: () => Promise<T>): Promise<T> {
   await mkdir(dirname(lock), { recursive: true });
-  let ownerless = 0;
+  let seen = '';
+  let seenSince = 0;
   for (let attempts = 0; ; attempts++) {
     try {
       await mkdir(lock);
-      await writeFile(join(lock, 'owner'), `${process.pid}\n`);
       break;
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-      if (attempts === 20) process.stderr.write('git-dedup: waiting for the object pool lock\n');
-      const owner = Number((await readFile(join(lock, 'owner'), 'utf8').catch(() => '')).trim());
-      const alive = owner > 0 && processExists(owner);
-      // Wait as long as a live owner holds the lock; only an ownerless lock times out.
-      if (!alive && ++ownerless > 1200)
-        throw new Error(`Timed out waiting for git-dedup lock: ${lock}`, { cause: error });
-      const age = Date.now() - (await stat(lock).catch(() => ({ mtimeMs: Date.now() }))).mtimeMs;
-      // A dead owner may be reaped. A live but slow Git process must never lose its lock.
-      if (age > 5000 && owner && !alive) {
-        await rm(lock, { recursive: true, force: true });
-        continue;
-      }
-      await delay(50);
     }
+    const state = await inspectLock(lock);
+    if (attempts === 20)
+      process.stderr.write(
+        `git-dedup: waiting for the object pool lock ${lock} (owner pid ${state.owner || 'unknown'})\n`,
+      );
+    // Monotonic time pauses during sleep, so a holder suspended with the machine is not mistaken for a hung one.
+    if (state.key !== seen) [seen, seenSince] = [state.key, performance.now()];
+    // A dead owner may be reaped. A live but slow Git process must never lose its lock: it keeps its
+    // heartbeat fresh. A lock from a version without a heartbeat still waits on a live owner.
+    const dead = state.owner > 0 && !processExists(state.owner) && state.age > 5000;
+    const silent = (!state.owner || state.heartbeat) && performance.now() - seenSince > LOCK_STALE_MS;
+    if (dead || silent) await reapLock(lock, state.key);
+    await delay(50);
   }
+  const heartbeat = join(lock, 'heartbeat');
+  const timer = setInterval(() => {
+    const now = new Date();
+    void utimes(heartbeat, now, now).catch(() => {});
+  }, LOCK_STALE_MS / 6);
+  timer.unref();
   try {
+    await writeFile(join(lock, 'owner'), `${process.pid}\n`);
+    await writeFile(heartbeat, '');
     return await action();
   } finally {
+    clearInterval(timer);
     await rm(lock, { recursive: true, force: true });
+  }
+}
+
+async function inspectLock(lock: string) {
+  const [dir, owner, heartbeat] = await Promise.all([
+    stat(lock).catch(() => undefined),
+    readFile(join(lock, 'owner'), 'utf8').catch(() => ''),
+    stat(join(lock, 'heartbeat')).catch(() => undefined),
+  ]);
+  return {
+    key: `${dir?.ino}:${dir?.mtimeMs}:${owner}:${heartbeat?.mtimeMs}`,
+    owner: Number(owner.trim()) || 0,
+    heartbeat: Boolean(heartbeat),
+    age: dir ? Date.now() - dir.mtimeMs : 0,
+  };
+}
+
+/** Removes the lock only if it is still the one the caller judged stale, one reaper at a time. */
+async function reapLock(lock: string, key: string): Promise<void> {
+  const guard = `${lock}.reap`;
+  try {
+    await mkdir(guard);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    // ponytail: a reaper killed mid-reap strands its guard, and two waiters clearing that stranded guard can
+    // still race. That needs a crash inside a millisecond window first; give the guard an owner if it ever bites.
+    const guardAge = Date.now() - ((await stat(guard).catch(() => undefined))?.mtimeMs ?? Date.now());
+    if (guardAge > LOCK_STALE_MS) await rm(guard, { recursive: true, force: true });
+    return;
+  }
+  try {
+    if ((await inspectLock(lock)).key !== key) return;
+    const tombstone = `${lock}.${randomUUID()}.reaped`;
+    await rename(lock, tombstone).catch(() => {});
+    await rm(tombstone, { recursive: true, force: true });
+  } finally {
+    await rm(guard, { recursive: true, force: true });
   }
 }
 

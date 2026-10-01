@@ -90,6 +90,40 @@ it('normalizes SSH and HTTPS remote identities', () => {
   expect(keyForRemote('/tmp/project.git')).toBeUndefined();
 });
 
+it('keeps store keys stable for common remote forms', () => {
+  for (const remote of [
+    'git@github.com:team/project.git',
+    'git@github.com:/team/project.git',
+    'ssh://git@github.com/team/project.git',
+    'https://github.com/team/project.git',
+    'https://user@github.com/team/project',
+    'http://github.com/team/project',
+    'git://github.com/team/project.git',
+  ])
+    expect(keyForRemote(remote)).toBe('github.com/team/project');
+  expect(keyForRemote('alice@server:/srv/project.git')).toBe('server/srv/project');
+  expect(keyForRemote('ssh://alice@server/srv/project.git')).toBe('server/srv/project');
+});
+
+it('gives distinct remotes distinct store keys', () => {
+  const remotes = [
+    'alice@server:proj/x.git',
+    'bob@server:proj/x.git',
+    'alice@server:/proj/x.git',
+    'http://h_8080/a/b',
+    'http://h:8080/a/b',
+  ];
+  const keys = remotes.map((remote) => keyForRemote(remote));
+  expect(keys.every(Boolean)).toBe(true);
+  expect(new Set(keys).size).toBe(remotes.length);
+});
+
+it('keys home-relative ssh URLs like their scp-style equivalents', () => {
+  expect(keyForRemote('ssh://git@github.com/~/team/project.git')).toBe('github.com/team/project');
+  expect(keyForRemote('ssh://alice@server/~/proj/x.git')).toBe(keyForRemote('alice@server:proj/x.git'));
+  expect(keyForRemote('ssh://server/~/proj/x.git')).not.toBe(keyForRemote('ssh://server/proj/x.git'));
+});
+
 it('lists registered remotes without creating an empty store', async () => {
   const { root, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
@@ -120,6 +154,66 @@ it('waits for a pool lock held by a live process instead of failing', async () =
   await expectAlternate(store, join(root, 'one', '.git'));
 });
 
+async function lockFixture() {
+  const root = await realpath(await mkdtemp(join(tmpdir(), 'gitx-lock-')));
+  roots.push(root);
+  const store = join(root, 'store');
+  await mkdir(store);
+  await writeFile(join(store, '.gitx-store'), 'gitx-store-v2\n');
+  git(['init', '-q', '--bare', join(store, 'pool.git')], root);
+  return { root, store, lock: join(root, '.store.gitx-lock') };
+}
+
+it('lets exactly one of many concurrent waiters reap a stale lock', async () => {
+  const { root, store, lock } = await lockFixture();
+  // The pool gc runs only under the store lock; a mkdir sentinel records any overlap.
+  const gitPath = join(root, 'git-wrapper');
+  await writeFile(
+    gitPath,
+    `#!/bin/sh
+case " $* " in *" gc --prune=never "*)
+  mkdir "${root}/inside" 2>/dev/null || echo overlap >> "${root}/overlaps"
+  sleep 0.2; rmdir "${root}/inside" 2>/dev/null;;
+esac
+exec git "$@"
+`,
+    { mode: 0o755 },
+  );
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store), gitPath });
+  for (let round = 0; round < 4; round++) {
+    await mkdir(lock);
+    await writeFile(join(lock, 'owner'), '999999\n');
+    await utimes(lock, new Date(0), new Date(0));
+    await Promise.all(Array.from({ length: 6 }, () => api.gc()));
+  }
+  await expect(readFile(join(root, 'overlaps'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+}, 20_000);
+
+it('reaps a lock whose heartbeat stopped even when its owner pid is reused', async () => {
+  const { root, store, lock } = await lockFixture();
+  // An unrelated live process now holds the dead holder's pid.
+  const unrelated = spawn('sleep', ['30'], { stdio: 'ignore' });
+  daemons.push(unrelated);
+  // Each clock read jumps 10 s, so the 60 s heartbeat timeout passes within a few polls.
+  const now = performance.now.bind(performance);
+  let jumps = 0;
+  const spy = vi.spyOn(performance, 'now').mockImplementation(() => now() + ++jumps * 10_000);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  try {
+    for (const owner of [`${unrelated.pid}\n`, undefined]) {
+      await mkdir(lock);
+      if (owner) {
+        await writeFile(join(lock, 'owner'), owner);
+        await writeFile(join(lock, 'heartbeat'), '');
+      }
+      expect(await api.gc()).toEqual({ compacted: true });
+    }
+  } finally {
+    spy.mockRestore();
+  }
+  await expect(stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
 it('clones twice into one pool and makes both consumers depend on it', async () => {
   const { root, remote, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
@@ -148,8 +242,8 @@ it('uses one pool for forks with the same commits', async () => {
   expect(await api.run(['clone', fork, 'fork'])).toBe(0);
   expect((await api.storeInfo()).remoteCount).toBe(2);
   expect(await api.listRemotes()).toEqual([
-    { key: '127.0.0.1_' + new URL(fork).port + '/other/project', remote: fork },
-    { key: '127.0.0.1_' + new URL(remote).port + '/team/project', remote },
+    { key: '127.0.0.1:' + new URL(fork).port + '/other/project', remote: fork },
+    { key: '127.0.0.1:' + new URL(remote).port + '/team/project', remote },
   ]);
   expect(git(['rev-parse', 'HEAD'], join(root, 'upstream'))).toBe(git(['rev-parse', 'HEAD'], join(root, 'fork')));
   await expectAlternate(store, join(root, 'upstream', '.git'));
