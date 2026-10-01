@@ -1582,8 +1582,14 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     const target = resolve(at, path);
     // Git already shares the superproject object directory between worktrees.
     // Its submodules have separate gitdirs, so populate those through the pool.
-    if (await isPresent(join(target, '.gitmodules')))
-      return updateSubmodules(['update', '--init', '--recursive'], target);
+    // Like plain git worktree add, succeed once the worktree exists; submodule setup is extra.
+    if (
+      (await isPresent(join(target, '.gitmodules'))) &&
+      (await updateSubmodules(['update', '--init', '--recursive'], target)) !== 0
+    )
+      process.stderr.write(
+        `git-dedup: worktree created, but submodule setup failed; retry with \`git submodule update --init --recursive\` in ${target}\n`,
+      );
     return 0;
   }
 
