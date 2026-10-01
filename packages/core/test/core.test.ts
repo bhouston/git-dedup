@@ -90,6 +90,40 @@ it('normalizes SSH and HTTPS remote identities', () => {
   expect(keyForRemote('/tmp/project.git')).toBeUndefined();
 });
 
+it('keeps store keys stable for common remote forms', () => {
+  for (const remote of [
+    'git@github.com:team/project.git',
+    'git@github.com:/team/project.git',
+    'ssh://git@github.com/team/project.git',
+    'https://github.com/team/project.git',
+    'https://user@github.com/team/project',
+    'http://github.com/team/project',
+    'git://github.com/team/project.git',
+  ])
+    expect(keyForRemote(remote)).toBe('github.com/team/project');
+  expect(keyForRemote('alice@server:/srv/project.git')).toBe('server/srv/project');
+  expect(keyForRemote('ssh://alice@server/srv/project.git')).toBe('server/srv/project');
+});
+
+it('gives distinct remotes distinct store keys', () => {
+  const remotes = [
+    'alice@server:proj/x.git',
+    'bob@server:proj/x.git',
+    'alice@server:/proj/x.git',
+    'http://h_8080/a/b',
+    'http://h:8080/a/b',
+  ];
+  const keys = remotes.map((remote) => keyForRemote(remote));
+  expect(keys.every(Boolean)).toBe(true);
+  expect(new Set(keys).size).toBe(remotes.length);
+});
+
+it('keys home-relative ssh URLs like their scp-style equivalents', () => {
+  expect(keyForRemote('ssh://git@github.com/~/team/project.git')).toBe('github.com/team/project');
+  expect(keyForRemote('ssh://alice@server/~/proj/x.git')).toBe(keyForRemote('alice@server:proj/x.git'));
+  expect(keyForRemote('ssh://server/~/proj/x.git')).not.toBe(keyForRemote('ssh://server/proj/x.git'));
+});
+
 it('lists registered remotes without creating an empty store', async () => {
   const { root, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
@@ -208,8 +242,8 @@ it('uses one pool for forks with the same commits', async () => {
   expect(await api.run(['clone', fork, 'fork'])).toBe(0);
   expect((await api.storeInfo()).remoteCount).toBe(2);
   expect(await api.listRemotes()).toEqual([
-    { key: '127.0.0.1_' + new URL(fork).port + '/other/project', remote: fork },
-    { key: '127.0.0.1_' + new URL(remote).port + '/team/project', remote },
+    { key: '127.0.0.1:' + new URL(fork).port + '/other/project', remote: fork },
+    { key: '127.0.0.1:' + new URL(remote).port + '/team/project', remote },
   ]);
   expect(git(['rev-parse', 'HEAD'], join(root, 'upstream'))).toBe(git(['rev-parse', 'HEAD'], join(root, 'fork')));
   await expectAlternate(store, join(root, 'upstream', '.git'));
