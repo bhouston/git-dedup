@@ -220,6 +220,7 @@ function parseClone(
     positional.push(arg);
   }
   if (positional.length < 1 || positional.length > 2) return 'clone expects a repository and an optional directory';
+  if (positional.includes('')) return 'clone does not support an empty argument';
   return { remote: positional[0]!, destination: positional[1], recurse, branch, forwarded };
 }
 
@@ -288,12 +289,6 @@ function parseGlobal(
       prefix.push(arg, args[i + 1]!);
       if (arg === '-C') cwd = resolve(cwd, args[i + 1]!);
       i += 2;
-      continue;
-    }
-    if (arg.startsWith('-C') && arg.length > 2) {
-      prefix.push(arg);
-      cwd = resolve(cwd, arg.slice(2));
-      i++;
       continue;
     }
     if (/^(--git-dir|--work-tree|--namespace|--config-env)=/.test(arg) || arg.startsWith('-c')) {
@@ -1530,7 +1525,6 @@ export function createGitDedup(options: GitDedupOptions = {}) {
         i++;
         continue;
       }
-      if (arg.startsWith('-C')) continue;
       if (managed) fallback(parsed.rest, `global option ${arg.split('=')[0]} is not supported`);
       return (await git(args, cwd, true)).code;
     }
