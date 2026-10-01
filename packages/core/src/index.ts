@@ -685,8 +685,11 @@ export function createGitDedup(options: GitDedupOptions = {}) {
 
   async function consumerTips(repo: string): Promise<string[]> {
     const refs = await checked(['for-each-ref', '--format=%(objectname)', 'refs'], repo);
-    const head = await checked(['rev-parse', 'HEAD'], repo);
-    return [...new Set([...refs.split('\n').filter(Boolean), head])].toSorted();
+    // An unborn HEAD (orphan branch, bare repo naming a missing branch) has no tip to pin.
+    const head = await git(['rev-parse', '--verify', '-q', 'HEAD'], repo);
+    const tips = refs.split('\n').filter(Boolean);
+    if (head.code === 0) tips.push(head.stdout.trim());
+    return [...new Set(tips)].toSorted();
   }
 
   async function unpinnedTips(pool: string, id: string, tips: string[]): Promise<string[]> {

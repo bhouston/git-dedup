@@ -177,6 +177,27 @@ it('adds an existing repo including a local-only commit', async () => {
   expect((await api.storeInfo()).remoteCount).toBe(1);
 });
 
+it('adds repos with an unborn HEAD and keeps their refs through prune', async () => {
+  const { root, remote, store } = await fixture();
+  const orphan = join(root, 'orphan');
+  git(['clone', remote, orphan], root);
+  git(['config', 'user.email', 'test@example.test'], orphan);
+  git(['config', 'user.name', 'Test'], orphan);
+  git(['commit', '--allow-empty', '-m', 'local'], orphan);
+  const localTip = git(['rev-parse', 'HEAD'], orphan);
+  git(['checkout', '--orphan', 'fresh'], orphan);
+  const bare = join(root, 'bare.git');
+  git(['clone', '--bare', remote, bare], root);
+  git(['symbolic-ref', 'HEAD', 'refs/heads/missing'], bare);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.add(orphan)).toMatchObject({ added: 1, failed: 0 });
+  expect(await api.add(bare)).toMatchObject({ added: 1, failed: 0 });
+  await api.prune();
+  expect(git(['cat-file', '-t', localTip], orphan)).toBe('commit');
+  git(['fsck', '--full'], orphan);
+  git(['fsck', '--full'], bare);
+});
+
 it('keeps an existing alternate that lacks a trailing newline', async () => {
   const { root, remote, store } = await fixture();
   const consumer = join(root, 'consumer');
