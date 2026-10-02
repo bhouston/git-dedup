@@ -20,7 +20,7 @@ In one typical local setup spanning 117 checkouts (94 distinct Git object databa
 
 ## Installation
 
-Requires **Node.js 22+ and Git** on macOS or Linux. The package is ESM and includes TypeScript declarations.
+Requires **Node.js 22+ and Git** on macOS, Linux, or Windows. The package is ESM and includes TypeScript declarations.
 
 ```sh
 npm install git-dedup-core

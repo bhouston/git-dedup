@@ -4,20 +4,29 @@ import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
-import { dirname, join } from 'node:path';
+import { delimiter, dirname, join, sep } from 'node:path';
 import { createGitDedup, keyForRemote } from '../src/index.js';
 
-const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
+/** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
+function stop(child: ChildProcess): void {
+  if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+  else child.kill();
+}
+
+const windows = process.platform === 'win32';
+const realGit = spawnSync(windows ? 'where' : 'which', ['git'], { encoding: 'utf8' })
+  .stdout.split(/\r?\n/)[0]!
+  .trim();
 const roots: string[] = [];
 const daemons: ChildProcess[] = [];
 afterEach(async () => {
   vi.restoreAllMocks();
-  for (const daemon of daemons.splice(0)) daemon.kill();
+  for (const daemon of daemons.splice(0)) stop(daemon);
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
 function git(args: string[], cwd: string) {
-  const root = roots.find((path) => cwd === path || cwd.startsWith(path + '/'));
+  const root = roots.find((path) => cwd === path || cwd.startsWith(path + sep));
   const result = spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
@@ -94,6 +103,9 @@ function stderr() {
   const spy = vi.spyOn(process.stderr, 'write').mockReturnValue(true);
   return () => spy.mock.calls.map(([message]) => String(message)).join('');
 }
+
+// Windows cannot start a shell-script Git wrapper, so failure injection runs on Linux and macOS.
+const itWithWrapper = it.skipIf(windows);
 
 /** A git wrapper that fails the `at`-th and later runs of one subcommand. */
 async function failingGit(root: string, command: string, at: number, message = `injected ${command} failure`) {
@@ -212,7 +224,7 @@ it('reports a missing, invalid, or self-referencing Git executable', async () =>
   await writeFile(join(plain, 'git'), '#!/bin/sh\n');
   await chmod(join(plain, 'git'), 0o644);
   const store = join(root, 's');
-  const noGit = createGitDedup({ cwd: root, env: testEnv(root, store, { PATH: `${empty}:${plain}` }) });
+  const noGit = createGitDedup({ cwd: root, env: testEnv(root, store, { PATH: `${empty}${delimiter}${plain}` }) });
   expect(await noGit.doctor()).toMatchObject({
     empty: true,
     checks: [{ name: 'git', ok: false, detail: 'Real Git executable not found on PATH' }],
@@ -221,22 +233,28 @@ it('reports a missing, invalid, or self-referencing Git executable', async () =>
   await expect(own.gitPath()).rejects.toThrow('must point to a real Git executable');
   const missing = createGitDedup({ cwd: root, gitPath: join(root, 'nope'), env: testEnv(root, store) });
   await expect(missing.gitPath()).rejects.toThrow('must point to a real Git executable');
-  const broken = join(root, 'broken-git');
-  await writeFile(broken, '#!/bin/sh\necho nope >&2\nexit 3\n');
-  await chmod(broken, 0o755);
-  const failing = createGitDedup({ cwd: root, gitPath: broken, env: testEnv(root, store) });
-  await expect(failing.gitVersion()).rejects.toThrow('git --version failed: nope');
+  if (!windows) {
+    const broken = join(root, 'broken-git');
+    await writeFile(broken, '#!/bin/sh\necho nope >&2\nexit 3\n');
+    await chmod(broken, 0o755);
+    const failing = createGitDedup({ cwd: root, gitPath: broken, env: testEnv(root, store) });
+    await expect(failing.gitVersion()).rejects.toThrow('git --version failed: nope');
+  }
   const working = createGitDedup({ cwd: root, env: testEnv(root, store) });
   expect(await working.gitVersion()).toMatch(/^git version /);
 });
 
 it('honors a configured gitPath, including the legacy gitx key', async () => {
   const root = await tmp();
-  const fake = join(root, 'wrapped-git');
-  await writeFile(fake, `#!/bin/sh\nexec "${realGit}" "$@"\n`);
-  await chmod(fake, 0o755);
+  // Windows runs only .exe files without a shell, so point at the real Git there.
+  const fake = windows ? realGit : join(root, 'wrapped-git');
+  if (!windows) {
+    await writeFile(fake, `#!/bin/sh\nexec "${realGit}" "$@"\n`);
+    await chmod(fake, 0o755);
+  }
   for (const section of ['git-dedup', 'gitx']) {
-    await writeFile(join(root, 'global.gitconfig'), `[${section}]\n gitPath = ${fake}\n`);
+    // Git config reads a backslash as an escape; forward slashes work on every platform.
+    await writeFile(join(root, 'global.gitconfig'), `[${section}]\n gitPath = ${fake.replaceAll('\\', '/')}\n`);
     const api = createGitDedup({ cwd: root, env: testEnv(root, join(root, 's')) });
     expect(await api.gitPath()).toBe(fake);
   }
@@ -318,7 +336,7 @@ it('skips unsupported or unkeyed repositories when adding', async () => {
   });
 });
 
-it('restores alternates when sharing objects fails during add', async () => {
+itWithWrapper('restores alternates when sharing objects fails during add', async () => {
   const { root, remote, store, source } = await fixture();
   stderr();
   for (const existing of [false, true]) {
@@ -354,13 +372,15 @@ it('reports failed, skipped, and rolled-back removals', async () => {
   const alternates = join(consumer, '.git', 'objects', 'info', 'alternates');
   const original = await readFile(alternates, 'utf8');
   // An fsck failure restores the alternate and reports the failure.
-  const gitPath = await failingGit(root, 'fsck', 1);
-  const failing = createGitDedup({ cwd: root, gitPath, env: testEnv(root, store) });
-  expect(await failing.remove(consumer)).toMatchObject({
-    failed: 1,
-    repositories: [{ reason: 'could not detach from the store' }],
-  });
-  expect(await readFile(alternates, 'utf8')).toBe(original);
+  if (!windows) {
+    const gitPath = await failingGit(root, 'fsck', 1);
+    const failing = createGitDedup({ cwd: root, gitPath, env: testEnv(root, store) });
+    expect(await failing.remove(consumer)).toMatchObject({
+      failed: 1,
+      repositories: [{ reason: 'could not detach from the store' }],
+    });
+    expect(await readFile(alternates, 'utf8')).toBe(original);
+  }
   // Rebase state names objects to keep; other alternates survive detaching.
   const head = git(['rev-parse', 'HEAD'], consumer);
   await mkdir(join(consumer, '.git', 'rebase-merge'));
@@ -511,6 +531,7 @@ it('names the cause when the pool cannot be used during add', async () => {
   expect(await sha256.add(consumer)).toMatchObject({ repositories: [{ reason: 'unsupported object format' }] });
   expect(await sha256.doctor()).toMatchObject({ checks: [{ name: 'pool', ok: false }, { name: 'git' }] });
   await rm(store, { recursive: true });
+  if (windows) return;
   for (const [message, reason] of [
     ['cannot lock ref refs/gitx/x', 'ref collision in the shared pool'],
     ['could not resolve host: x', 'remote fetch failed'],

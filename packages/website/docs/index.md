@@ -12,7 +12,7 @@ slug: /
 npm install -g git-dedup
 ```
 
-Requires Node.js 22+ and Git on macOS or Linux.
+Requires Node.js 22+ and Git on macOS, Linux, or Windows.
 
 ## Clone
 

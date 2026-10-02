@@ -1,10 +1,16 @@
 import { it, expect } from 'vitest';
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, access } from 'node:fs/promises';
 import { createServer } from 'node:net';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 import { tmpdir } from 'node:os';
 import { createGitDedup } from '../src/index.js';
+
+/** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
+function stop(child: ChildProcess): void {
+  if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+  else child.kill();
+}
 
 it('intercepts worktree add and initializes pool-backed submodules', async () => {
   const root = await mkdtemp(join(tmpdir(), 'gitx-worktree-'));
@@ -78,7 +84,8 @@ it('intercepts worktree add and initializes pool-backed submodules', async () =>
     expect(await readFile(join(module, 'README'), 'utf8')).toBe('library\n');
     const moduleGitdir = git(module, 'rev-parse', '--absolute-git-dir');
     expect(moduleGitdir).toContain('/worktrees/worker/modules/deps/library');
-    expect((await readFile(join(moduleGitdir, 'objects', 'info', 'alternates'), 'utf8')).trim()).toBe(
+    // Git for Windows writes `C:/x` paths; normalize compares them with Node's form.
+    expect(normalize((await readFile(join(moduleGitdir, 'objects', 'info', 'alternates'), 'utf8')).trim())).toBe(
       join(await realpath(env.GIT_DEDUP_STORE), 'pool.git', 'objects'),
     );
     // Native no-checkout semantics must survive interception.
@@ -94,7 +101,7 @@ it('intercepts worktree add and initializes pool-backed submodules', async () =>
   } finally {
     if (daemon && daemon.exitCode === null) {
       const closed = new Promise<void>((resolve) => daemon!.once('exit', () => resolve()));
-      daemon.kill();
+      stop(daemon);
       await closed;
     }
     await rm(root, { recursive: true, force: true });

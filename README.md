@@ -30,7 +30,7 @@ git-dedup store add ./my-existing-repo
 
 That's it. git-dedup automatically consolidates the new or existing project's history into a shared store in `~/.git-dedup` or if its history already existed there, it reuses it automatically.
 
-Requires **Node.js 22+ and Git**. Tested on macOS and Linux.
+Requires **Node.js 22+ and Git**. Tested on macOS, Linux, and Windows.
 
 **[Documentation](https://git-dedup.ben3d.ca/) · [CLI reference](https://git-dedup.ben3d.ca/docs/cli) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
 
@@ -58,10 +58,14 @@ Every other command, such as `git-dedup status`, is forwarded to Git. Clone form
 
 ## Configuration
 
-The default store is `~/.git-dedup`. Override it with `GIT_DEDUP_STORE`:
+The default store is `~/.git-dedup` (`%USERPROFILE%\.git-dedup` on Windows). Override it with `GIT_DEDUP_STORE`:
 
 ```sh
 export GIT_DEDUP_STORE="$HOME/my-git-dedup-store"
+```
+
+```powershell
+$env:GIT_DEDUP_STORE = "$HOME\my-git-dedup-store"
 ```
 
 Changing `GIT_DEDUP_STORE` selects a different store; it does not move the existing one. git-dedup does not change global Git configuration.

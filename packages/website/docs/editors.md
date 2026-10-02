@@ -34,4 +34,4 @@ If you install Node.js through a version manager such as nvm, the git-dedup path
 
 Dev containers and remote workspaces need the store mounted at the same path; see [containers, sandboxes, and other machines](./safety.md#containers-sandboxes-and-other-machines).
 
-Visual Studio (the Windows IDE) is not supported, because git-dedup runs only on macOS and Linux.
+On Windows, npm installs git-dedup as `git-dedup.cmd` and `git-dedup.ps1` launchers rather than an `.exe`. Editors start the `git.path` executable directly, without a shell, so they cannot run these launchers, and this setup is not available on Windows. Run `git-dedup` from the integrated terminal instead. Visual Studio (the Windows IDE) uses its own bundled Git and is not supported.
