@@ -27,19 +27,11 @@ async function fixture() {
   return { root, config, store, env, api: createGitDedup({ cwd: root, env }) };
 }
 
-it('refuses to run on Windows with a pointer to WSL', () => {
-  const platform = Object.getOwnPropertyDescriptor(process, 'platform')!;
-  Object.defineProperty(process, 'platform', { value: 'win32' });
-  try {
-    expect(() => createGitDedup()).toThrow(/does not support Windows yet\. Run it inside WSL/);
-  } finally {
-    Object.defineProperty(process, 'platform', platform);
-  }
-});
-
 it('uses the new default, preserves legacy stores, and respects explicit overrides', async () => {
   const { root, config, store, env, api } = await fixture();
   vi.stubEnv('HOME', root);
+  // homedir() reads USERPROFILE on Windows.
+  vi.stubEnv('USERPROFILE', root);
   await writeFile(config, `[gitx]\n store = ${join(root, 'legacy')}\n`);
   const before = await readFile(config, 'utf8');
   expect(await api.storePath()).toBe(store);
@@ -95,11 +87,15 @@ it('doctor recognizes a valid pool and reports an invalid pool without changing 
 
 it('uses git-dedup.gitPath from Git configuration and accepts the old setting', async () => {
   const { config, env, root } = await fixture();
-  const binary = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
-  await writeFile(config, `[git-dedup]\n gitPath = ${binary}\n`);
+  const binary = execFileSync(process.platform === 'win32' ? 'where' : 'which', ['git'], { encoding: 'utf8' })
+    .split(/\r?\n/)[0]!
+    .trim();
+  // Git config reads a backslash as an escape; forward slashes work on every platform.
+  const configured = binary.replaceAll('\\', '/');
+  await writeFile(config, `[git-dedup]\n gitPath = ${configured}\n`);
   const api = createGitDedup({ cwd: root, env });
   expect((await api.doctor()).checks.find((check) => check.name === 'git')?.detail).toContain(binary);
-  await writeFile(config, `[gitx]\n gitPath = ${binary}\n`);
+  await writeFile(config, `[gitx]\n gitPath = ${configured}\n`);
   expect(
     (await createGitDedup({ cwd: root, env }).doctor()).checks.find((check) => check.name === 'git')?.detail,
   ).toContain(binary);

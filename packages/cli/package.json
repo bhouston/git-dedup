@@ -29,10 +29,6 @@
     "README.md",
     "LICENSE"
   ],
-  "os": [
-    "darwin",
-    "linux"
-  ],
   "type": "module",
   "exports": {
     ".": {
@@ -44,7 +40,7 @@
     "access": "public"
   },
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json && chmod +x dist/bin.js",
+    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/bin.js', 0o755)\"",
     "test": "vitest run",
     "tsc": "tsc --noEmit -p tsconfig.json",
     "typecheck": "tsc --noEmit -p tsconfig.json"

@@ -4,18 +4,24 @@ import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
 import { cp, mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, normalize, sep } from 'node:path';
 import { createGitDedup, keyForRemote, type StorageReport } from '../src/index.js';
+
+/** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
+function stop(child: ChildProcess): void {
+  if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+  else child.kill();
+}
 
 const roots: string[] = [];
 const daemons: ChildProcess[] = [];
 afterEach(async () => {
-  for (const daemon of daemons.splice(0)) daemon.kill();
+  for (const daemon of daemons.splice(0)) stop(daemon);
   for (const root of roots.splice(0)) await rm(root, { recursive: true, force: true });
 });
 
 function git(args: string[], cwd: string) {
-  const root = roots.find((path) => cwd === path || cwd.startsWith(path + '/'));
+  const root = roots.find((path) => cwd === path || cwd.startsWith(path + sep));
   const result = spawnSync('git', args, {
     cwd,
     encoding: 'utf8',
@@ -79,7 +85,8 @@ async function fixture() {
 }
 
 async function expectAlternate(store: string, consumerGitdir: string) {
-  expect((await readFile(join(consumerGitdir, 'objects', 'info', 'alternates'), 'utf8')).trim()).toBe(
+  // Git for Windows writes `C:/x` paths; normalize compares them with Node's form.
+  expect(normalize((await readFile(join(consumerGitdir, 'objects', 'info', 'alternates'), 'utf8')).trim())).toBe(
     join(store, 'pool.git', 'objects'),
   );
 }
@@ -164,35 +171,40 @@ async function lockFixture() {
   return { root, store, lock: join(root, '.store.gitx-lock') };
 }
 
-it('lets exactly one of many concurrent waiters reap a stale lock', async () => {
-  const { root, store, lock } = await lockFixture();
-  // The pool gc runs only under the store lock; a mkdir sentinel records any overlap.
-  const gitPath = join(root, 'git-wrapper');
-  await writeFile(
-    gitPath,
-    `#!/bin/sh
+// Windows cannot start a shell-script Git wrapper; Linux and macOS cover the wrapper-based tests.
+it.skipIf(process.platform === 'win32')(
+  'lets exactly one of many concurrent waiters reap a stale lock',
+  async () => {
+    const { root, store, lock } = await lockFixture();
+    // The pool gc runs only under the store lock; a mkdir sentinel records any overlap.
+    const gitPath = join(root, 'git-wrapper');
+    await writeFile(
+      gitPath,
+      `#!/bin/sh
 case " $* " in *" gc --prune=never "*)
   mkdir "${root}/inside" 2>/dev/null || echo overlap >> "${root}/overlaps"
   sleep 0.2; rmdir "${root}/inside" 2>/dev/null;;
 esac
 exec git "$@"
 `,
-    { mode: 0o755 },
-  );
-  const api = createGitDedup({ cwd: root, env: testEnv(root, store), gitPath });
-  for (let round = 0; round < 4; round++) {
-    await mkdir(lock);
-    await writeFile(join(lock, 'owner'), '999999\n');
-    await utimes(lock, new Date(0), new Date(0));
-    await Promise.all(Array.from({ length: 6 }, () => api.gc()));
-  }
-  await expect(readFile(join(root, 'overlaps'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
-}, 20_000);
+      { mode: 0o755 },
+    );
+    const api = createGitDedup({ cwd: root, env: testEnv(root, store), gitPath });
+    for (let round = 0; round < 4; round++) {
+      await mkdir(lock);
+      await writeFile(join(lock, 'owner'), '999999\n');
+      await utimes(lock, new Date(0), new Date(0));
+      await Promise.all(Array.from({ length: 6 }, () => api.gc()));
+    }
+    await expect(readFile(join(root, 'overlaps'), 'utf8')).rejects.toMatchObject({ code: 'ENOENT' });
+  },
+  20_000,
+);
 
 it('reaps a lock whose heartbeat stopped even when its owner pid is reused', async () => {
   const { root, store, lock } = await lockFixture();
   // An unrelated live process now holds the dead holder's pid.
-  const unrelated = spawn('sleep', ['30'], { stdio: 'ignore' });
+  const unrelated = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], { stdio: 'ignore' });
   daemons.push(unrelated);
   // Each clock read jumps 10 s, so the 60 s heartbeat timeout passes within a few polls.
   const now = performance.now.bind(performance);
@@ -229,6 +241,17 @@ it('clones twice into one pool and makes both consumers depend on it', async () 
   expect((await api.storeInfo()).remoteCount).toBe(1);
   await rm(store, { recursive: true, force: true });
   expect(() => git(['show', 'HEAD:hello.txt'], join(root, 'one'))).toThrow();
+});
+
+it('pools branches whose ref paths pass the Windows path limit', async () => {
+  const { root, source, remote, store } = await fixture();
+  // Under the pool's refs/gitx/remotes/<64-character id>/heads/, this name passes 260 characters.
+  const branch = `feature/${'long-branch-name-'.repeat(7)}end`;
+  git(['push', 'origin', `HEAD:refs/heads/${branch}`], source);
+  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+  expect(await api.run(['clone', '-q', remote, 'consumer'])).toBe(0);
+  await expectAlternate(store, join(root, 'consumer', '.git'));
+  expect(git(['for-each-ref', '--format=%(refname)', 'refs/gitx/remotes'], join(store, 'pool.git'))).toContain(branch);
 });
 
 it('uses one pool for forks with the same commits', async () => {

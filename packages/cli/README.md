@@ -28,7 +28,7 @@ That's it. git-dedup automatically consolidates the new or existing project's hi
 
 ## Installation
 
-Requires **Node.js 22+ and Git** on macOS or Linux.
+Requires **Node.js 22+ and Git** on macOS, Linux, or Windows.
 
 ```sh
 npm install --global git-dedup
@@ -94,10 +94,14 @@ Reports go to stderr. See [storage reports](https://git-dedup.ben3d.ca/docs/how-
 
 ## Configuration
 
-The default store is `~/.git-dedup`. Override it with `GIT_DEDUP_STORE`:
+The default store is `~/.git-dedup` (`%USERPROFILE%\.git-dedup` on Windows). Override it with `GIT_DEDUP_STORE`:
 
 ```sh
 export GIT_DEDUP_STORE="$HOME/my-git-dedup-store"
+```
+
+```powershell
+$env:GIT_DEDUP_STORE = "$HOME\my-git-dedup-store"
 ```
 
 Changing `GIT_DEDUP_STORE` selects a different store; it does not move the existing one. git-dedup does not change global Git configuration.

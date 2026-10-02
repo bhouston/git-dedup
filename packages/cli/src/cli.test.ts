@@ -1,21 +1,29 @@
-import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { execFileSync, spawn, type ChildProcess } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { validate } from '@clidoc/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { commandLine, extendMatchers } from 'vitest-command-line';
 
+/** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
+function stop(child: ChildProcess): void {
+  if (process.platform === 'win32') spawnSync('taskkill', ['/pid', String(child.pid), '/t', '/f'], { stdio: 'ignore' });
+  else child.kill();
+}
+
 extendMatchers();
 
-const bin = new URL('../dist/bin.js', import.meta.url).pathname;
+const bin = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
 const cli = commandLine({ command: ['node', bin], name: 'git-dedup' });
 const dirs: string[] = [];
 const daemons: ChildProcess[] = [];
 
 async function fixture(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'git-dedup-cli-'));
+  // Canonical, like the store path git-dedup prints: Windows temp paths can use 8.3 short names.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'git-dedup-cli-')));
   dirs.push(dir);
   return dir;
 }
@@ -30,7 +38,7 @@ function isolatedEnv(dir: string): NodeJS.ProcessEnv {
 }
 
 afterEach(async () => {
-  for (const daemon of daemons.splice(0)) daemon.kill();
+  for (const daemon of daemons.splice(0)) stop(daemon);
   await Promise.all(dirs.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
 });
 
@@ -185,7 +193,7 @@ describe('git-dedup CLI', () => {
     expect(removed).toHaveStderr(/run git-dedup store remove --forget/);
     const forgotten = await cli.run(['store', 'remove', '--forget', 'deleted'], options);
     expect(forgotten).toSucceed();
-    expect(forgotten).toHaveStdout(/Forgot .*deleted\/\.git/);
+    expect(forgotten).toHaveStdout(/Forgot .*deleted[\\/]\.git/);
     const result = await cli.run(['store', 'prune'], options);
     expect(result).toSucceed();
     expect(result).toHaveStdout(/Reclaimed \d/);
@@ -381,9 +389,10 @@ describe('git-dedup CLI', () => {
     const run = await cli.run(['store', 'add', workspace, '--all'], options);
     expect(run).toFail();
     expect(run).toHaveStdout(/Added 3 repository\(s\); skipped 0; failed 1\./);
-    expect(run).toHaveStdout(new RegExp(`Finished ${nested}`));
-    expect(run).toHaveStderr(new RegExp(`Failed ${failing}`));
-    expect(run).toHaveStdout(new RegExp(`Skipped ${submodule}: handled with`));
+    // Plain substrings: Windows paths contain backslashes, which a RegExp would read as escapes.
+    expect(run.stdout).toContain(`Finished ${nested}`);
+    expect(run.stderr).toContain(`Failed ${failing}`);
+    expect(run.stdout).toContain(`Skipped ${submodule}: handled with`);
   });
 
   it('reports an empty directory without creating a store', async () => {

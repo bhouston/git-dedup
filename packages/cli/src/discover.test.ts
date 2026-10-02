@@ -6,6 +6,10 @@ import { createGitDedup } from 'git-dedup-core';
 import { afterEach, expect, it } from 'vitest';
 import { discoverCheckouts } from './discover.js';
 
+const windows = process.platform === 'win32';
+const realGit = execFileSync(windows ? 'where' : 'which', ['git'], { encoding: 'utf8' })
+  .split(/\r?\n/)[0]!
+  .trim();
 const fixtures: string[] = [];
 
 async function fixture(): Promise<string> {
@@ -30,7 +34,8 @@ it('finds checkouts in ordinary directories outside a Git worktree', async () =>
   await mkdir(join(root, 'build'), { recursive: true });
   init(vendor);
   init(build);
-  await symlink(root, join(root, 'cycle'));
+  // Windows creates directory junctions without privileges; other platforms ignore the type.
+  await symlink(root, join(root, 'cycle'), 'junction');
 
   expect((await discoverCheckouts(root)).map(({ path }) => path)).toEqual([build, vendor]);
 });
@@ -49,7 +54,7 @@ it('honors nested ignore rules and negation without traversing ignored parents',
   await mkdir(join(root, 'nested'), { recursive: true });
   await writeFile(join(root, 'nested', '.gitignore'), 'blocked/\n');
   for (const path of Object.values(paths)) init(path);
-  await symlink(root, join(root, 'cycle'));
+  await symlink(root, join(root, 'cycle'), 'junction');
 
   expect((await discoverCheckouts(root)).map(({ path }) => path)).toEqual([
     root,
@@ -59,15 +64,15 @@ it('honors nested ignore rules and negation without traversing ignored parents',
   ]);
 });
 
-it('rejects when git check-ignore fails and when the target is not a directory', async () => {
+// Windows cannot start a shell-script Git wrapper; Linux and macOS cover this.
+it.skipIf(windows)('rejects when git check-ignore fails and when the target is not a directory', async () => {
   const root = await fixture();
   init(root);
   await mkdir(join(root, 'child'));
   const wrapper = join(root, 'failing-git');
-  const real = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
   await writeFile(
     wrapper,
-    `#!/bin/sh\ncase "$*" in *check-ignore*) echo broken >&2; exit 128;; esac\nexec '${real}' "$@"\n`,
+    `#!/bin/sh\ncase "$*" in *check-ignore*) echo broken >&2; exit 128;; esac\nexec '${realGit}' "$@"\n`,
     { mode: 0o755 },
   );
   await expect(discoverCheckouts(root, wrapper)).rejects.toThrow('git check-ignore failed: broken');
@@ -80,16 +85,17 @@ it('uses the Git executable configured with git-dedup.gitPath', async () => {
   const project = join(root, 'project');
   init(project);
   const log = join(root, 'calls.log');
-  const wrapper = join(root, 'configured-git');
-  const real = execFileSync('which', ['git'], { encoding: 'utf8' }).trim();
-  await writeFile(wrapper, `#!/bin/sh\necho "$@" >> '${log}'\nexec '${real}' "$@"\n`, { mode: 0o755 });
-  await writeFile(join(root, 'config'), `[git-dedup]\n gitPath = ${wrapper}\n`);
+  // Windows runs only .exe files without a shell, so configure the real Git there.
+  const wrapper = windows ? realGit : join(root, 'configured-git');
+  if (!windows) await writeFile(wrapper, `#!/bin/sh\necho "$@" >> '${log}'\nexec '${realGit}' "$@"\n`, { mode: 0o755 });
+  // Git config reads a backslash as an escape; forward slashes work on every platform.
+  await writeFile(join(root, 'config'), `[git-dedup]\n gitPath = ${wrapper.replaceAll('\\', '/')}\n`);
   const env = { ...process.env, GIT_CONFIG_GLOBAL: join(root, 'config'), GIT_CONFIG_NOSYSTEM: '1' };
   const git = await createGitDedup({ cwd: root, env }).gitPath();
 
   expect(git).toBe(wrapper);
   expect((await discoverCheckouts(root, git)).map(({ path }) => path)).toEqual([project]);
-  expect(await readFile(log, 'utf8')).toContain('rev-parse --absolute-git-dir');
+  if (!windows) expect(await readFile(log, 'utf8')).toContain('rev-parse --absolute-git-dir');
 });
 
 it('skips stale worktree .git files and still finds valid checkouts', async () => {

@@ -62,7 +62,7 @@ git-dedup store add ./my-existing-repo`}</code>
                 Set up your agents <span aria-hidden="true">→</span>
               </Link>
             </div>
-            <p className={styles.platform}>Node.js 22+ · macOS and Linux</p>
+            <p className={styles.platform}>Node.js 22+ · macOS, Linux, and Windows</p>
           </div>
         </div>
       </header>

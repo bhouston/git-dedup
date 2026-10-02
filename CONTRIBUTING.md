@@ -41,7 +41,7 @@ pnpm docs:build
 pnpm test:workflow
 ```
 
-The pre-commit hook formats and lints staged files and type-checks the workspace. CI runs the checks on Linux and macOS. Tests use temporary repositories and isolated Git configuration. Keep storage logic in `packages/core`, CLI presentation in `packages/cli`, and site content in `packages/website`. Preserve native Git argument semantics by forwarding unsupported invocations. Linked consumers depend on the shared object pool. Never delete unrelated directories.
+The pre-commit hook formats and lints staged files and type-checks the workspace. CI runs the checks on Linux, macOS, and Windows. Tests use temporary repositories and isolated Git configuration. Tests that inject failures through a shell-script Git wrapper run only on Linux and macOS, because Windows starts only `.exe` files without a shell. Keep storage logic in `packages/core`, CLI presentation in `packages/cli`, and site content in `packages/website`. Preserve native Git argument semantics by forwarding unsupported invocations. Linked consumers depend on the shared object pool. Never delete unrelated directories.
 
 ## Releases
 

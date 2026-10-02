@@ -3,7 +3,7 @@ import { promisify } from 'node:util';
 import { constants } from 'node:fs';
 import { access, mkdir, readdir, readFile, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { homedir, constants as osConstants } from 'node:os';
-import { basename, delimiter, dirname, join, resolve, sep } from 'node:path';
+import { basename, delimiter, dirname, join, normalize, resolve, sep } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 
 export interface GitDedupOptions {
@@ -98,7 +98,8 @@ function addFailureReason(error: unknown, stage: string): string {
 type GitResult = { code: number; stdout: string; stderr: string };
 
 function expandHome(value: string): string {
-  return value === '~' ? homedir() : value.startsWith('~/') ? join(homedir(), value.slice(2)) : value;
+  const prefixed = value.startsWith('~/') || (process.platform === 'win32' && value.startsWith('~\\'));
+  return value === '~' ? homedir() : prefixed ? join(homedir(), value.slice(2)) : value;
 }
 
 function isPresent(path: string): Promise<boolean> {
@@ -509,6 +510,20 @@ function checkoutPath(gitdir: string): string {
   return basename(gitdir) === '.git' ? dirname(gitdir) : gitdir;
 }
 
+/** Git for Windows prints `C:/x` paths; use Node's native form so they join and compare with Node's own. */
+function nativePath(path: string): string {
+  return process.platform === 'win32' ? normalize(path) : path;
+}
+
+/** Compares paths as the file system does: Windows paths ignore case and accept either separator. */
+function samePath(a: string, b: string): boolean {
+  return process.platform === 'win32' ? normalize(a).toLowerCase() === normalize(b).toLowerCase() : a === b;
+}
+
+function hasAlternate(lines: string[], target: string): boolean {
+  return lines.some((line) => samePath(line, target));
+}
+
 function alternateLines(content: string): string[] {
   return content
     .split('\n')
@@ -521,7 +536,7 @@ async function setAlternate(gitdir: string, pool: string): Promise<void> {
   await mkdir(dirname(alternate), { recursive: true });
   const target = join(pool, 'objects');
   const lines = alternateLines(await readFile(alternate, 'utf8').catch(() => ''));
-  if (lines.includes(target)) return;
+  if (hasAlternate(lines, target)) return;
   await writeFile(alternate, [...lines, target].join('\n') + '\n');
 }
 
@@ -542,7 +557,7 @@ async function ownedElsewhere(root: string, id: string, gitdir: string): Promise
   );
   return (
     typeof owner === 'string' &&
-    (await canonicalPath(owner)) !== (await canonicalPath(gitdir)) &&
+    !samePath(await canonicalPath(owner), await canonicalPath(gitdir)) &&
     (await carriesConsumerId(owner, id))
   );
 }
@@ -569,10 +584,6 @@ async function consumerId(root: string, commonGitdir: string): Promise<string> {
 }
 
 export function createGitDedup(options: GitDedupOptions = {}) {
-  if (process.platform === 'win32')
-    throw new Error(
-      'git-dedup does not support Windows yet. Run it inside WSL, or use Git directly. See https://github.com/bhouston/git-dedup/issues/74',
-    );
   const cwd = resolve(options.cwd ?? process.cwd());
   const incomingEnv: NodeJS.ProcessEnv = { ...process.env, ...options.env };
   const env: NodeJS.ProcessEnv = { ...incomingEnv, GITX_ACTIVE: '1', GIT_DEDUP_ACTIVE: '1' };
@@ -598,8 +609,11 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     const own = await realpath(process.argv[1] ?? '').catch(() => '');
     let candidate: string | undefined = options.gitPath;
     if (!candidate) {
-      for (const pathPart of (env.PATH ?? '').split(delimiter)) {
-        const path = resolve(cwd, pathPart || '.', 'git');
+      // Windows names executables with an extension. Only .exe spawns without a shell, so skip .cmd shims.
+      const names = process.platform === 'win32' ? ['git.exe'] : ['git'];
+      for (const path of (env.PATH ?? env.Path ?? '')
+        .split(delimiter)
+        .flatMap((pathPart) => names.map((name) => resolve(cwd, pathPart || '.', name)))) {
         const actual = await realpath(path).catch(() => '');
         if (!actual || actual === own) continue;
         if (
@@ -707,6 +721,9 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     await checked(['-C', pool, 'config', 'gc.auto', '0']);
     await checked(['-C', pool, 'config', 'maintenance.auto', 'false']);
     await checked(['-C', pool, 'config', 'gc.pruneExpire', 'never']);
+    // Pool ref names nest a 64-character remote ID, which can pass the 260-character
+    // Windows path limit. Git for Windows lifts it with this setting; other Gits ignore it.
+    await checked(['-C', pool, 'config', 'core.longpaths', 'true']);
     await rm(join(pool, 'objects', 'info', 'commit-graph'), { force: true });
     await rm(join(pool, 'objects', 'info', 'commit-graphs'), { recursive: true, force: true });
     return pool;
@@ -800,12 +817,11 @@ export function createGitDedup(options: GitDedupOptions = {}) {
   }
 
   async function repoGitdir(path: string): Promise<string> {
-    const value = await checked(['rev-parse', '--absolute-git-dir'], path);
-    return value;
+    return nativePath(await checked(['rev-parse', '--absolute-git-dir'], path));
   }
 
   async function repoCommonGitdir(path: string): Promise<string> {
-    return checked(['rev-parse', '--path-format=absolute', '--git-common-dir'], path);
+    return nativePath(await checked(['rev-parse', '--path-format=absolute', '--git-common-dir'], path));
   }
 
   async function origin(path: string): Promise<string | undefined> {
@@ -908,13 +924,13 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     // A worktree (or --separate-git-dir gitfile) at the destination, or a bare/mirror gitdir that is the destination.
     if (!(await isPresent(join(destination, '.git')))) {
       const gitdir = await git(['rev-parse', '--absolute-git-dir'], destination).catch(() => undefined);
-      if (gitdir?.code !== 0 || gitdir.stdout.trim() !== (await canonicalPath(destination))) return;
+      if (gitdir?.code !== 0 || !samePath(gitdir.stdout.trim(), await canonicalPath(destination))) return;
     }
     const root = await storePath();
     const pool = poolPath(root);
     const commonGitdir = await repoCommonGitdir(destination);
     const alternates = await readFile(join(commonGitdir, 'objects', 'info', 'alternates'), 'utf8').catch(() => '');
-    if (!alternateLines(alternates).includes(join(pool, 'objects'))) return;
+    if (!hasAlternate(alternateLines(alternates), join(pool, 'objects'))) return;
     // The source's pins hold these objects until this pin lands.
     const tips = await consumerTips(destination);
     await withLock(root, () => pinConsumer(pool, destination, commonGitdir, tips));
@@ -948,7 +964,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       if (!target.startsWith(repo + sep) || (await readdir(target).catch(() => [])).length > 0) continue;
       const gitPathResult = await git(['rev-parse', '--path-format=absolute', '--git-path', `modules/${name}`], repo);
       if (gitPathResult.code !== 0) continue;
-      const gitdir = gitPathResult.stdout.trim();
+      const gitdir = nativePath(gitPathResult.stdout.trim());
       if (await isPresent(gitdir)) continue;
       const root = await storePath();
       await withLock(root, async () => {
@@ -995,7 +1011,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     if (args[0] !== 'update') return (await git(['submodule', ...args], at, true)).code;
     // Without a pathspec, `git submodule update` from a subdirectory covers the whole superproject.
     const toplevel = await git(['rev-parse', '--show-toplevel'], at);
-    const repo = toplevel.code === 0 ? toplevel.stdout.trim() : at;
+    const repo = toplevel.code === 0 ? nativePath(toplevel.stdout.trim()) : at;
     const unsupported = args.slice(1).find((arg) => !['--init', '--recursive', '--quiet', '-q'].includes(arg));
     if (unsupported) {
       fallback(args, `submodule update ${unsupported} is not supported`);
@@ -1122,7 +1138,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
           const state = JSON.stringify({ version: 1, pool, remote: url, key, tips }) + '\n';
           const alternate = join(commonGitdir, 'objects', 'info', 'alternates');
           const originalAlternates = await readFile(alternate, 'utf8').catch(() => undefined);
-          const alreadyLinked = alternateLines(originalAlternates ?? '').includes(join(pool, 'objects'));
+          const alreadyLinked = hasAlternate(alternateLines(originalAlternates ?? ''), join(pool, 'objects'));
           const registered =
             (await readFile(join(root, 'remotes', `${remoteId(key)}.json`), 'utf8').catch(() => '')) ===
             registration(url, key);
@@ -1242,7 +1258,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       try {
         const original = await readFile(alternate, 'utf8').catch(() => '');
         const lines = alternateLines(original);
-        if (!lines.includes(poolObjects)) {
+        if (!hasAlternate(lines, poolObjects)) {
           record({ path: repo, status: 'skipped', reason: 'not linked to the store' });
           return;
         }
@@ -1270,7 +1286,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
             // Without -l, repack copies every object reachable from refs, reflogs, and
             // the indexes of all worktrees, including objects read through the pool.
             await checked(['-c', 'repack.writeBitmaps=false', 'repack', '-a', '-d', '--pack-kept-objects'], repo);
-            const remaining = lines.filter((line) => line !== poolObjects);
+            const remaining = lines.filter((line) => !samePath(line, poolObjects));
             if (remaining.length) await writeFile(alternate, remaining.join('\n') + '\n');
             else await rm(alternate);
             try {
@@ -1509,7 +1525,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       const forgotten: string[] = [];
       let present = false;
       for (const [id, gitdir] of await registeredConsumers(root)) {
-        if (!candidates.has(gitdir)) continue;
+        if (![...candidates].some((candidate) => samePath(candidate, gitdir))) continue;
         // A new checkout at a deleted checkout's path is live; forget only the old registration.
         if (await carriesConsumerId(gitdir, id)) {
           present = true;

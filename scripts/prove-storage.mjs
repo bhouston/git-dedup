@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { spawn, execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, normalize } from 'node:path';
 import { createServer } from 'node:net';
 import { createGitDedup } from '../packages/core/dist/index.js';
 
@@ -83,7 +83,9 @@ try {
   for (const name of clones) {
     const remote = name.split('-')[0];
     const consumer = join(root, name);
-    assert.equal((await readFile(join(consumer, '.git', 'objects', 'info', 'alternates'), 'utf8')).trim(), poolObjects);
+    // Git for Windows writes `C:/x` paths; normalize compares them with Node's form.
+    const alternate = (await readFile(join(consumer, '.git', 'objects', 'info', 'alternates'), 'utf8')).trim();
+    assert.equal(normalize(alternate), poolObjects);
     assert.equal(git(consumer, 'remote', 'get-url', 'origin'), `git://127.0.0.1:${port}/team/${remote}`);
     assert.equal(git(consumer, 'rev-parse', 'HEAD'), git(join(remotes, 'team', remote), 'rev-parse', 'HEAD'));
     git(consumer, 'gc');
@@ -113,8 +115,13 @@ try {
 } finally {
   if (daemon && daemon.exitCode === null) {
     const closed = new Promise((resolve) => daemon.once('exit', resolve));
-    daemon.kill();
+    // On Windows, `git daemon` runs as a child process of git.exe, so stop the whole tree.
+    if (process.platform === 'win32')
+      execFileSync('taskkill', ['/pid', String(daemon.pid), '/t', '/f'], { stdio: 'ignore' });
+    else daemon.kill();
     await closed;
   }
+  // An orphaned daemon would hold this pipe open and keep the script alive.
+  daemon?.stderr.destroy();
   await rm(root, { recursive: true, force: true });
 }
