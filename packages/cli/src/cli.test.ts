@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -22,7 +22,8 @@ const dirs: string[] = [];
 const daemons: ChildProcess[] = [];
 
 async function fixture(): Promise<string> {
-  const dir = await mkdtemp(join(tmpdir(), 'git-dedup-cli-'));
+  // Canonical, like the store path git-dedup prints: Windows temp paths can use 8.3 short names.
+  const dir = await realpath(await mkdtemp(join(tmpdir(), 'git-dedup-cli-')));
   dirs.push(dir);
   return dir;
 }
