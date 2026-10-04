@@ -64,7 +64,9 @@ git-dedup worktree add -b review ../project-review
 
 Supported updates prepare missing submodule repositories from the pool, including nested modules with `--recursive`. `git-dedup submodule add` adds the module to the store after Git creates it. `git-dedup worktree add` uses Git's common object database and initializes supported submodules in the new worktree; `--no-checkout` defers initialization.
 
-Other Git commands and unsupported clone forms pass through to Git. Local path clones, shallow or partial clones, and SHA-256 repositories use ordinary Git behavior. When git-dedup forwards a clone, submodule, or worktree command it would otherwise handle, it prints one `git-dedup: <reason>; using plain Git` line on stderr unless you pass `-q` or `--quiet`.
+Other Git commands and unsupported clone forms pass through to Git. Local path clones, history-window requests, unsupported partial-clone filters, and SHA-256 repositories use ordinary Git behavior. When git-dedup forwards a clone, fetch, submodule, or worktree command it would otherwise handle, it prints one `git-dedup: <reason>; using plain Git` line on stderr unless you pass `-q` or `--quiet`.
+
+Supported network clones and fetches ignore `--depth` (any value), `--single-branch`, `--filter=blob:none`, and `--filter=tree:0`, providing full history through the store with no opt-out. `--shallow-since` and `--shallow-exclude` pass through unchanged; sparse settings stay intact. Use native Git for true shallow semantics. For a self-hosted Actions runner, install a `git` PATH shim before checkout; see [CI setup](https://git-dedup.ben3d.ca/docs/ci).
 
 `store add` accepts a local checkout path, not a remote URL. The checkout can then depend on the shared store for Git objects. `store fetch` refreshes registered remotes.
 

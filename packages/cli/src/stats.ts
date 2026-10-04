@@ -24,7 +24,9 @@ export function printStorageReports(reports: StorageReport[]): void {
           'logical pack bytes only; actual disk reclaimed may differ.\n',
       );
     } else {
-      process.stderr.write('git-dedup: clone storage depends on objects already present in the shared pool.\n');
+      process.stderr.write(
+        `git-dedup: ${reports[0]?.operation} storage depends on objects already present in the shared pool.\n`,
+      );
     }
   }
 }

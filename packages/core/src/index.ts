@@ -13,7 +13,7 @@ export interface GitDedupOptions {
   onStorageReport?: (report: StorageReport) => void;
 }
 export interface StorageReport {
-  operation: 'clone' | 'add';
+  operation: 'clone' | 'fetch' | 'add';
   repository: string;
   poolReused: boolean;
   estimatedSavedBytes: number;
@@ -168,12 +168,32 @@ async function directorySize(path: string): Promise<number> {
 
 const remoteId = (key: string): string => createHash('sha256').update(key).digest('hex');
 
-function unsupportedClone(args: string[]): string | undefined {
-  return args.find((arg) =>
-    /^(--depth|--shallow|--filter|--mirror|--bare|--reference|--dissociate|--no-hardlinks|--shared|--separate-git-dir|--bundle-uri|--sparse|--upload-pack|--server-option|--template|--config|--origin|--no-checkout|--single-branch|--no-single-branch|--revision|--jobs|-j|-o|-u|-c)(=|$)/.test(
-      arg,
-    ),
-  );
+/** Strip bandwidth hints, but preserve history windows and unsupported filters verbatim. */
+function fullHistoryArgs(args: string[], fetch = false): string[] | undefined {
+  const result: string[] = [];
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i]!;
+    if (arg === '--') {
+      result.push(...args.slice(i));
+      break;
+    }
+    const equals = arg.indexOf('=');
+    const name = equals < 0 ? arg : arg.slice(0, equals);
+    const inline = equals < 0 ? undefined : arg.slice(equals + 1);
+    if (name === '--shallow-since' || name === '--shallow-exclude') return undefined;
+    if (name === '--depth' || (fetch && name === '--deepen') || name === '--filter') {
+      const value = inline ?? args[++i];
+      if (!value || value.startsWith('-')) return undefined;
+      if (name === '--filter' && !['blob:none', 'tree:0'].includes(value)) return undefined;
+      continue;
+    }
+    if (arg === '--single-branch' || arg === '--no-single-branch' || (fetch && arg === '--unshallow')) continue;
+    result.push(arg);
+    // Do not interpret another option's value as a bandwidth hint.
+    if (['-b', '--branch', '--negotiation-tip', '--refmap', '--jobs', '-j'].includes(arg) && args[i + 1] !== undefined)
+      result.push(args[++i]!);
+  }
+  return result;
 }
 
 /** Reports a handled command that is forwarded to plain Git, unless Git was asked to be quiet. */
@@ -196,8 +216,9 @@ function gitFailure(error: unknown): string {
 function parseClone(
   args: string[],
 ): { remote: string; destination?: string; recurse: boolean; branch?: string; forwarded: string[] } | string {
-  const unsupported = unsupportedClone(args);
-  if (unsupported) return `clone option ${unsupported.split('=')[0]} is not supported`;
+  const full = fullHistoryArgs(args);
+  if (!full) return 'clone history window, filter, or missing option value is not supported';
+  args = full;
   const positional: string[] = [];
   let recurse = false;
   let branch: string | undefined;
@@ -224,7 +245,7 @@ function parseClone(
       recurse = true;
       continue;
     }
-    if (['-q', '--quiet', '-v', '--verbose', '--progress', '--no-tags'].includes(arg)) {
+    if (['-q', '--quiet', '-v', '--verbose', '--progress', '--no-tags', '--sparse'].includes(arg)) {
       forwarded.push(arg);
       continue;
     }
@@ -646,12 +667,18 @@ export function createGitDedup(options: GitDedupOptions = {}) {
   }
 
   // 'tee' captures output like the default and also streams stderr (Git progress) to the user.
-  async function git(args: string[], at = cwd, inherit: boolean | 'tee' = false, input?: string): Promise<GitResult> {
+  async function git(
+    args: string[],
+    at = cwd,
+    inherit: boolean | 'tee' = false,
+    input?: string,
+    networkEnv?: NodeJS.ProcessEnv,
+  ): Promise<GitResult> {
     const binary = await gitPath();
     return new Promise((resolveResult, reject) => {
       const child = spawn(binary, args, {
         cwd: at,
-        env,
+        env: networkEnv ?? env,
         stdio: inherit === true ? 'inherit' : [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
       });
       child.stdin?.end(input);
@@ -685,12 +712,18 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     });
   }
 
-  async function checked(args: string[], at = cwd, progress = false, input?: string): Promise<string> {
+  async function checked(
+    args: string[],
+    at = cwd,
+    progress = false,
+    input?: string,
+    networkEnv?: NodeJS.ProcessEnv,
+  ): Promise<string> {
     if (hasRepositoryEnvironment)
       throw new Error(
         'Unset Git repository override environment variables before running git-dedup storage operations',
       );
-    const result = await git(args, at, progress && 'tee', input);
+    const result = await git(args, at, progress && 'tee', input, networkEnv);
     if (result.code !== 0) throw new Error(`git ${args.join(' ')} failed: ${result.stderr.trim()}`);
     return result.stdout.trim();
   }
@@ -735,9 +768,10 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     key: string,
     progress = false,
     quiet = false,
+    networkEnv?: NodeJS.ProcessEnv,
   ): Promise<string> {
     const pool = await ensurePool(root);
-    await fetchRemoteObjects(pool, remote, key, progress, quiet);
+    await fetchRemoteObjects(pool, remote, key, progress, quiet, networkEnv);
     await registerRemote(root, remote, key);
     return pool;
   }
@@ -748,6 +782,7 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     key: string,
     progress = false,
     quiet = false,
+    networkEnv?: NodeJS.ProcessEnv,
   ): Promise<void> {
     const id = remoteId(key);
     if (!quiet) process.stderr.write(`git-dedup: updating object pool for ${key}\n`);
@@ -764,6 +799,8 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       ],
       cwd,
       progress,
+      undefined,
+      networkEnv,
     );
   }
 
@@ -900,6 +937,80 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     const active = await git(['config', 'submodule.active', '.'], destination, true);
     if (active.code !== 0) return active.code;
     return updateSubmodules(['update', '--init', '--recursive', ...(quiet ? ['-q'] : [])], destination);
+  }
+
+  /** Fetch through the pool while native Git maintains refspecs and FETCH_HEAD. */
+  async function fetchCheckout(args: string[]): Promise<number | undefined> {
+    const full = fullHistoryArgs(args, true);
+    if (!full) return fallback(args, 'fetch history window, filter, or missing option value is not supported');
+    const operands: string[] = [];
+    for (let i = 0; i < full.length; i++) {
+      const arg = full[i]!;
+      if (arg === '--') {
+        operands.push(...full.slice(i + 1));
+        break;
+      }
+      if (/^(--negotiation-tip|--refmap|--jobs|-j)$/.test(arg)) {
+        i++;
+        continue;
+      }
+      if (arg.startsWith('-')) {
+        if (
+          !/^(--quiet|-q|--verbose|-v|--progress|--no-progress|--no-tags|--tags|--force|-f|--prune|--no-prune|--prune-tags|--no-prune-tags|--no-recurse-submodules|--recurse-submodules=no|--no-auto-maintenance|--no-auto-gc|--atomic|--append|-a|--no-write-fetch-head|--write-fetch-head|--show-forced-updates|--no-show-forced-updates|--update-head-ok|--refetch|--negotiation-tip=.+|--refmap=.*|--jobs=.+)$/.test(
+            arg,
+          )
+        )
+          return fallback(args, `fetch option ${arg.split('=')[0]} is not supported`);
+      } else operands.push(arg);
+    }
+    const head = await git(['symbolic-ref', '--quiet', '--short', 'HEAD']);
+    const configuredRemote =
+      head.code === 0 ? await git(['config', '--get', `branch.${head.stdout.trim()}.remote`]) : undefined;
+    const remote = operands[0] ?? (configuredRemote?.stdout.trim() || 'origin');
+    const urlResult = await git(['remote', 'get-url', remote]);
+    const url = urlResult.code === 0 ? urlResult.stdout.trim() : remote;
+    const key = await remoteKey(url);
+    if (!key) return fallback(args, 'fetch remote is not a supported network URL');
+    const format = await git(['rev-parse', '--show-object-format']);
+    if (format.code !== 0 || format.stdout.trim() !== 'sha1')
+      return fallback(args, 'fetch requires a SHA-1 repository');
+    const commonGitdir = await repoCommonGitdir(cwd);
+    const gitdir = await repoGitdir(cwd);
+    const shallow = (await checked(['rev-parse', '--is-shallow-repository'])) === 'true';
+    const quiet = args.includes('-q') || args.includes('--quiet');
+    const progress = !quiet && (process.stderr.isTTY || args.includes('--progress'));
+    // Actions keeps authentication in checkout-local HTTP configuration.
+    // Pass it to the pool's network call through the environment, never command text.
+    const networkEnv = { ...env };
+    let configCount = Number(networkEnv.GIT_CONFIG_COUNT ?? 0);
+    const networkConfig = await git(['config', '--null', '--get-regexp', String.raw`^(http\.|credential\.)`]);
+    for (const entry of networkConfig.stdout.split('\0').filter(Boolean)) {
+      const newline = entry.indexOf('\n');
+      networkEnv[`GIT_CONFIG_KEY_${configCount}`] = newline < 0 ? entry : entry.slice(0, newline);
+      networkEnv[`GIT_CONFIG_VALUE_${configCount++}`] = newline < 0 ? 'true' : entry.slice(newline + 1);
+    }
+    networkEnv.GIT_CONFIG_COUNT = String(configCount);
+    const root = await storePath();
+    return withLock(root, async () => {
+      const poolReused = await isPresent(poolPath(root));
+      if (poolReused && !quiet) process.stderr.write('git-dedup: reused object pool\n');
+      let pool: string;
+      try {
+        pool = await fetchRemote(root, url, key, progress, quiet, networkEnv);
+      } catch (error) {
+        return fallback(args, `object pool unavailable${gitFailure(error)}`);
+      }
+      // Register before exposing the alternate. Holding the lock prevents prune
+      // between borrowing objects and pinning both refs and FETCH_HEAD.
+      const id = await consumerId(root, commonGitdir);
+      await registerConsumer(root, id, commonGitdir);
+      await setAlternate(commonGitdir, pool);
+      const result = await git(['fetch', ...(shallow ? ['--unshallow'] : []), ...full], cwd, true);
+      await pinConsumer(pool, cwd, commonGitdir, [...(await consumerTips(cwd)), ...(await stateOids(gitdir))]);
+      if (result.code === 0 && options.onStorageReport)
+        emitStorageReport({ operation: 'fetch', repository: cwd, poolReused, estimatedSavedBytes: 0 });
+      return result.code;
+    });
   }
 
   /**
@@ -1647,11 +1758,38 @@ export function createGitDedup(options: GitDedupOptions = {}) {
       return (await git(args, cwd, true)).code;
     const managed =
       parsed.command === 'clone' ||
+      parsed.command === 'fetch' ||
       (parsed.command === 'submodule' && ['add', 'update'].includes(parsed.rest[0]!)) ||
       (parsed.command === 'worktree' && parsed.rest[0] === 'add');
     if (hasRepositoryEnvironment) {
       if (managed) fallback(parsed.rest, 'Git repository environment variables are set');
       return (await git(args, cwd, true)).code;
+    }
+    // Actions supplies per-command configuration (including authentication).
+    // Carry it into every underlying Git call rather than dropping it on the pool fetch.
+    if (parsed.command === 'fetch') {
+      const configuredEnv = { ...incomingEnv };
+      let count = Number(configuredEnv.GIT_CONFIG_COUNT ?? 0);
+      const remaining: string[] = [];
+      let configured = false;
+      for (let i = 0; i < parsed.prefix.length; i++) {
+        const arg = parsed.prefix[i]!;
+        if (arg === '-c' || arg.startsWith('-c')) {
+          configured = true;
+          const setting = arg === '-c' ? parsed.prefix[++i]! : arg.slice(2);
+          const equals = setting.indexOf('=');
+          configuredEnv[`GIT_CONFIG_KEY_${count}`] = equals < 0 ? setting : setting.slice(0, equals);
+          configuredEnv[`GIT_CONFIG_VALUE_${count++}`] = equals < 0 ? 'true' : setting.slice(equals + 1);
+        } else {
+          remaining.push(arg);
+          if (['-C', '--git-dir', '--work-tree', '--namespace', '--config-env'].includes(arg))
+            remaining.push(parsed.prefix[++i]!);
+        }
+      }
+      if (configured) {
+        configuredEnv.GIT_CONFIG_COUNT = String(count);
+        return createGitDedup({ ...options, env: configuredEnv }).run([...remaining, 'fetch', ...parsed.rest]);
+      }
     }
     // -C is resolved explicitly. Other global options can change Git semantics, so forward intact.
     for (let i = 0; i < parsed.prefix.length; i++) {
@@ -1670,6 +1808,10 @@ export function createGitDedup(options: GitDedupOptions = {}) {
     }
     if (parsed.command === 'clone') {
       const handled = await clone(parsed.rest, parsed.cwd);
+      if (handled !== undefined) return handled;
+    }
+    if (parsed.command === 'fetch') {
+      const handled = await fetchCheckout(parsed.rest);
       if (handled !== undefined) return handled;
     }
     if (parsed.command === 'submodule') return updateSubmodules(parsed.rest, parsed.cwd);

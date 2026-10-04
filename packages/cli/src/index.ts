@@ -46,7 +46,7 @@ export async function main(args = process.argv.slice(2)): Promise<number> {
   const parser = yargs(args)
     .scriptName('git-dedup')
     .usage(
-      '$0 <command> [options]\n\nGit commands pass through to Git; clone, submodule, and worktree can use the shared store.',
+      '$0 <command> [options]\n\nGit commands pass through to Git; clone, fetch, submodule, and worktree can use the shared store.',
     )
     .version(packageInfo.version)
     .help()

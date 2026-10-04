@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, realpath, rm } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, realpath, rm, symlink, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -425,4 +425,45 @@ describe('git-dedup CLI', () => {
     expect(verbose).toFail();
     expect(verbose.stderr).toContain('Refusing to adopt a nonempty directory');
   });
+});
+
+it.skipIf(process.platform === 'win32')('intercepts Actions-style fetches through a git PATH shim', async () => {
+  const { dir, remote } = await gitRemoteFixture();
+  const env = isolatedEnv(dir);
+  const shimDir = join(dir, 'shim');
+  await mkdir(shimDir);
+  await symlink(bin, join(shimDir, 'git'));
+  env.PATH = `${shimDir}:${env.PATH}`;
+  const run = (args: string[]) =>
+    execFileSync('git', args, { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+  for (const name of ['first', 'second']) {
+    const repo = join(dir, name);
+    run(['init', repo]);
+    run(['-C', repo, 'remote', 'add', 'origin', remote]);
+    run([
+      '-C',
+      repo,
+      '-c',
+      'protocol.version=2',
+      'fetch',
+      '--no-tags',
+      '--prune',
+      '--no-recurse-submodules',
+      '--depth=1',
+      'origin',
+      '+refs/heads/main:refs/remotes/origin/main',
+    ]);
+    run(['-C', repo, 'checkout', '--detach', 'FETCH_HEAD']);
+    expect(run(['-C', repo, 'rev-parse', '--is-shallow-repository'])).toBe('false');
+    expect((await readFile(join(repo, '.git', 'objects', 'info', 'alternates'), 'utf8')).trim()).toBe(
+      join(dir, 'store', 'pool.git', 'objects'),
+    );
+    expect(await readdir(join(repo, '.git', 'objects', 'pack'))).toEqual([]);
+  }
+  const stats = await cli.run(['--stats', '-C', join(dir, 'second'), 'fetch', '--depth=1', 'origin'], {
+    cwd: dir,
+    env,
+  });
+  expect(stats).toSucceed();
+  expect(stats).toHaveStderr('reused object pool');
 });

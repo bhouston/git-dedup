@@ -54,7 +54,13 @@ git-dedup store add ~/Coding --all
 git-dedup store
 ```
 
-Every other command, such as `git-dedup status`, is forwarded to Git. Clone forms git-dedup does not handle, such as shallow clones, fall back to plain Git. See the [CLI reference](https://git-dedup.ben3d.ca/docs/cli).
+Ordinary commands, such as `git-dedup status`, are forwarded to Git. Unsupported clone and fetch forms fall back to plain Git. See the [CLI reference](https://git-dedup.ben3d.ca/docs/cli).
+
+## Shallow checkouts and CI
+
+Supported network clones and fetches ignore `--depth` (any value), `--single-branch`, `--filter=blob:none`, and `--filter=tree:0`, providing full history through the shared store. A cold store downloads full history once; later runs reuse its objects while still checking the remote for updates. There is no opt-out: use native Git for true shallow semantics. `--shallow-since` and `--shallow-exclude` pass through unchanged, and sparse working-tree settings stay intact. Fetch upgrades an existing shallow repository to full history; `--deepen` and `--unshallow` add no history restriction on an already full repository.
+
+On a self-hosted GitHub Actions runner, `actions/checkout` invokes `git init` and `git fetch`, so install a `git` shim pointing to git-dedup ahead of native Git on the runner's `PATH` **before checkout runs**. Keep Node.js and the store available between jobs, and set `git-dedup.gitPath` to the absolute native Git executable to avoid shim recursion. See the [CI setup guide](https://git-dedup.ben3d.ca/docs/ci).
 
 ## Configuration
 

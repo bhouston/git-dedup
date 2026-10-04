@@ -40,18 +40,20 @@ await dedup.run(['clone', 'https://github.com/you/project.git']);
 await dedup.add('./my-existing-repo');
 ```
 
-`run()` accepts Git arguments and returns an exit code. It optimizes supported remote clones, `submodule update --init`, and `worktree add` with submodules. Recursive updates handle nested submodules. `submodule add` adopts the module after Git creates it. Other commands and unsupported clone forms, including local paths, shallow or partial clones, and SHA-256 repositories, pass through to Git.
+`run()` accepts Git arguments and returns an exit code. It optimizes supported remote clones and fetches, `submodule update --init`, and `worktree add` with submodules. Recursive updates handle nested submodules. `submodule add` adopts the module after Git creates it. Other commands and unsupported clone forms, including local paths, history-window requests, unsupported partial-clone filters, and SHA-256 repositories, pass through to Git.
+
+Supported network clones and fetches upgrade `--depth`, `--single-branch`, `--filter=blob:none`, and `--filter=tree:0` to full history from the store. History-window flags pass through, and sparse working trees stay intact. Use native Git for true shallow semantics; see [CI setup](https://git-dedup.ben3d.ca/docs/ci).
 
 ## API
 
 ### `createGitDedup(options?)`
 
-| Option            | Purpose                                                              |
-| ----------------- | -------------------------------------------------------------------- |
-| `cwd`             | Working directory; defaults to `process.cwd()`                       |
-| `env`             | Environment overrides for Git operations                             |
-| `gitPath`         | Explicit Git executable                                              |
-| `onStorageReport` | Opt-in callback for clone and checkout adoption storage measurements |
+| Option            | Purpose                                                                      |
+| ----------------- | ---------------------------------------------------------------------------- |
+| `cwd`             | Working directory; defaults to `process.cwd()`                               |
+| `env`             | Environment overrides for Git operations                                     |
+| `gitPath`         | Explicit Git executable                                                      |
+| `onStorageReport` | Opt-in callback for clone, fetch, and checkout adoption storage measurements |
 
 The returned methods are asynchronous:
 
@@ -100,7 +102,7 @@ const dedup = createGitDedup({
 await dedup.add('./git-dedup-checkout');
 ```
 
-The callback enables metadata scans after optimized clones and checkout adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for checkout adoption. The package exports `GitDedupOptions`, `StorageReport`, `StoreInfo`, `StoreAddResult`, `DoctorCheck`, and `DoctorResult` types. See [storage reports](https://git-dedup.ben3d.ca/docs/how-it-works#storage-reports) for what the estimates measure.
+The callback enables metadata scans after optimized clones, fetches, and checkout adoption. Without it, these scans are skipped. `StorageReport` also includes optional `beforeUniqueBytes` and `afterUniqueBytes` for checkout adoption. The package exports `GitDedupOptions`, `StorageReport`, `StoreInfo`, `StoreAddResult`, `DoctorCheck`, and `DoctorResult` types. See [storage reports](https://git-dedup.ben3d.ca/docs/how-it-works#storage-reports) for what the estimates measure.
 
 ## Configuration
 
