@@ -4,19 +4,17 @@ title: CI setup
 
 Network clone and fetch requests with `--depth` (any value), `--single-branch`, `--filter=blob:none`, or `--filter=tree:0` use full history from the shared store. The first request fills a cold store; later requests reuse its objects and still contact the remote for updates. There is no shallow-upgrade opt-out: use native Git when true shallow semantics matter. `--shallow-since` and `--shallow-exclude` pass through unchanged. Sparse checkout still controls which files appear in the working tree. Existing shallow repositories become full on supported fetches; `--deepen` and `--unshallow` impose no restriction on full repositories.
 
-On a self-hosted runner, [actions/checkout](https://github.com/actions/checkout/blob/main/src/git-command-manager.ts) calls `git init` followed by `git -c protocol.version=2 fetch --depth=1 ...`, rather than cloning. To intercept those calls, install a `git` shim ahead of native Git on the runner's `PATH` before starting the runner service or before the checkout step. For a macOS/Linux runner, provision it once using native Git and the installed git-dedup paths:
+Use [checkout-git-dedup](https://github.com/bhouston/checkout-git-dedup), our fork of `actions/checkout`, to call the installed wrapper directly:
 
-```sh
-npm install --global git-dedup
-native_git=$(command -v git)
-dedup_binary=$(command -v git-dedup)
-"$native_git" config --global git-dedup.gitPath "$native_git"
-mkdir -p "$HOME/.local/git-dedup-bin"
-ln -sf "$dedup_binary" "$HOME/.local/git-dedup-bin/git"
-export PATH="$HOME/.local/git-dedup-bin:$PATH"
-export GIT_DEDUP_STORE="$HOME/.git-dedup"
+```yaml
+steps:
+  - uses: bhouston/checkout-git-dedup@main
 ```
 
-Keep Node.js available on that `PATH`, persist the store between jobs, and give the runner account read/write access to it. Native Git must remain available at the configured absolute path. Checkout-local HTTP and credential settings are forwarded to the pool fetch, including authentication configured by the action.
+Install git-dedup on the runner once, alongside native Git and Node.js. The action inherits the runner's settings, including `GIT_DEDUP_STORE` and `git-dedup.gitPath`, with no action-specific configuration or `git` PATH shim. It keeps `HOME` intact during credential setup, so the default store remains `~/.git-dedup`. Keep the store between jobs and make it readable and writable by the runner account. Inputs, outputs, authentication, and post-job cleanup follow upstream checkout.
+
+Use a git-dedup build containing pool-backed fetch support ([PR #144](https://github.com/bhouston/git-dedup/pull/144), available on `main`); npm 2.1.0 predates this feature. The action requires git-dedup on `PATH` for checkout and post-job cleanup.
+
+If you keep the standard `actions/checkout`, it invokes `git` directly. A `git` PATH shim installed before checkout remains an alternative; set `git-dedup.gitPath` to the absolute native Git executable to avoid recursion.
 
 For a cache check, run `git-dedup --stats fetch --depth=1 origin` in each of two fresh initialized checkouts of the same remote. The second report should say `reused object pool`; `git rev-parse --is-shallow-repository` should print `false`. This reports pool reuse, not an offline checkout: remote updates still require network access. Linked checkouts depend on the store, so keep it in place.

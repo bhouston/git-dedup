@@ -60,7 +60,7 @@ Ordinary commands, such as `git-dedup status`, are forwarded to Git. Unsupported
 
 Supported network clones and fetches ignore `--depth` (any value), `--single-branch`, `--filter=blob:none`, and `--filter=tree:0`, providing full history through the shared store. A cold store downloads full history once; later runs reuse its objects while still checking the remote for updates. There is no opt-out: use native Git for true shallow semantics. `--shallow-since` and `--shallow-exclude` pass through unchanged, and sparse working-tree settings stay intact. Fetch upgrades an existing shallow repository to full history; `--deepen` and `--unshallow` add no history restriction on an already full repository.
 
-On a self-hosted GitHub Actions runner, `actions/checkout` invokes `git init` and `git fetch`, so install a `git` shim pointing to git-dedup ahead of native Git on the runner's `PATH` **before checkout runs**. Keep Node.js and the store available between jobs, and set `git-dedup.gitPath` to the absolute native Git executable to avoid shim recursion. See the [CI setup guide](https://git-dedup.ben3d.ca/docs/ci).
+On a self-hosted GitHub Actions runner, use [checkout-git-dedup](https://github.com/bhouston/checkout-git-dedup) instead of `actions/checkout`. It calls the runner's installed git-dedup directly and inherits its settings—no `git` shim or action-specific configuration is needed. Keep the store between jobs and use a git-dedup build with pool-backed fetch support. See the [CI setup guide](https://git-dedup.ben3d.ca/docs/ci).
 
 ## Configuration
 

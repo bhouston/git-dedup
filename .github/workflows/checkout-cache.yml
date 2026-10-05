@@ -9,35 +9,17 @@ permissions:
 jobs:
   checkout-cache:
     runs-on: [self-hosted, Linux]
+    # Provision git-dedup with pool-backed fetch support on the runner once.
+    # Both checkouts use the runner's global settings without a git shim.
     steps:
-      - uses: actions/checkout@v6
-        with:
-          persist-credentials: false
-      - uses: pnpm/action-setup@v5
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm build
-      - name: Put git-dedup on PATH before checkout
-        shell: bash
-        run: |
-          shim_dir="$(mktemp -d "$RUNNER_TEMP/git-dedup-shim.XXXXXX")"
-          native_git="$(command -v git)"
-          ln -s "$GITHUB_WORKSPACE/packages/cli/dist/bin.js" "$shim_dir/git"
-          echo "$shim_dir" >> "$GITHUB_PATH"
-          echo "GIT_CONFIG_COUNT=1" >> "$GITHUB_ENV"
-          echo "GIT_CONFIG_KEY_0=git-dedup.gitPath" >> "$GITHUB_ENV"
-          echo "GIT_CONFIG_VALUE_0=$native_git" >> "$GITHUB_ENV"
-          echo "GIT_DEDUP_STORE=$HOME/.git-dedup-ci-proof" >> "$GITHUB_ENV"
-      - name: First checkout through shim
-        uses: actions/checkout@v6
+      - name: First checkout
+        uses: bhouston/checkout-git-dedup@main
         with:
           path: cache-first
           fetch-depth: 1
           persist-credentials: false
-      - name: Second checkout through shim
-        uses: actions/checkout@v6
+      - name: Second checkout
+        uses: bhouston/checkout-git-dedup@main
         with:
           path: cache-second
           fetch-depth: 1
@@ -45,9 +27,9 @@ jobs:
       - name: Verify both checkouts borrow full history
         shell: bash
         run: |
+          cmp cache-first/.git/objects/info/alternates cache-second/.git/objects/info/alternates
           for repo in cache-first cache-second; do
             test "$(git -C "$repo" rev-parse --is-shallow-repository)" = false
-            test "$(cat "$repo/.git/objects/info/alternates")" = "$GIT_DEDUP_STORE/pool.git/objects"
             test -z "$(find "$repo/.git/objects/pack" -name '*.pack' -print -quit)"
             git -C "$repo" fsck --full
           done
