@@ -4,12 +4,12 @@ git-dedup is being ported from Node.js to a native Go binary, so it can ship thr
 
 ## Layout
 
-| Path                | Contents                                                                           | TypeScript origin              |
-| ------------------- | ---------------------------------------------------------------------------------- | ------------------------------ |
-| `cmd/git-dedup`     | Entry point; `main.version` is set at build time                                   | `packages/cli/src/bin.ts`      |
-| `internal/core`     | Store, lock, pool, clone, submodule, worktree, add, remove, prune                  | `packages/core/src/index.ts`   |
-| `internal/discover` | Checkout discovery for `store add --all`                                           | `packages/cli/src/discover.ts` |
-| `internal/cli`      | Argument parsing, help (embedded from the yargs output), `docgen`, stats, test API | `packages/cli/src/`            |
+| Path                | Contents                                                                         | TypeScript origin              |
+| ------------------- | -------------------------------------------------------------------------------- | ------------------------------ |
+| `cmd/git-dedup`     | Entry point; `main.version` is set at build time                                 | `packages/cli/src/bin.ts`      |
+| `internal/core`     | Store, lock, pool, clone, submodule, worktree, add, remove, prune                | `packages/core/src/index.ts`   |
+| `internal/discover` | Checkout discovery for `store add --all`                                         | `packages/cli/src/discover.ts` |
+| `internal/cli`      | Command tree (urfave/cli v3), `docgen` (OpenCLI from that tree), stats, test API | `packages/cli/src/`            |
 
 ## The contract: what both implementations must agree on
 
@@ -40,6 +40,14 @@ JSON files are written like `JSON.stringify(value) + "\n"`, without HTML escapin
 
 **Command line.** Output text, exit codes, and the `git-dedup: <reason>; using plain Git` fallback notices match the Node CLI.
 
+## CLI layer
+
+`internal/cli/cli.go` sends every first argument other than `store`, `docgen`, `--help`/`-h`, and `--version`/`-v` (after an optional `--stats`) straight to `core.Client.Run`, without parsing it. `git-dedup --version` alone prints Git's version line followed by git-dedup's.
+
+Only git-dedup's own commands go through [urfave/cli v3](https://github.com/urfave/cli). Each handler stores its exit code and error on the app, so an error returned by urfave/cli is always a usage mistake. `--stats` and `--version` are persistent root flags, so they also work after a command name.
+
+`docgen` builds the OpenCLI document from the command tree with the `ourfave` adapter from [opencli](https://github.com/bcdxn/opencli), then adds what the adapter does not read: required arguments, the `--format` choices, and the `git-dedup clone` passthrough. It writes JSON and YAML with its own serializer, because the opencli codec always writes an empty `global.config`, which the OpenCLI schema rejects. Markdown keeps a `## git-dedup <command>` section per command.
+
 ## Testing
 
 The TypeScript suites are the parity gate. `pnpm test:native` builds the Go binary into `build/native/` and runs `packages/core/test/*` plus the CLI and discovery tests against it:
@@ -47,15 +55,17 @@ The TypeScript suites are the parity gate. `pnpm test:native` builds the Go bina
 - `packages/cli/src/cli.test.ts` runs the binary directly when `GIT_DEDUP_BIN` is set.
 - The core and discovery suites call the library API. `packages/core/test/native.ts` maps that API onto the binary's test-only `__api` command, which only exists when `GIT_DEDUP_TEST_API` names a result file; without it, `__api` is an ordinary unknown Git command.
 - `pnpm test:native --coverage` builds with Go coverage instrumentation and writes `coverage/native.out`.
-- `go test ./...` covers parsing, URL keys, formatting, and docgen without Node.
+- `go test ./...` covers the command line, URL keys, formatting, and docgen (checked with opencli's validator) without Node.
 
 Two lock tests mock Node's timers and clock and are skipped for the native binary. `handlers.test.ts` and `inprocess.test.ts` test the Node CLI's internals and stay with the Node suite.
 
 ## Intentional differences
 
 - An error from a store command prints `Error: <message>` and exits 1. The Node CLI printed the command's help followed by a stack trace.
+- Help text comes from urfave/cli instead of matching yargs. A usage mistake (unknown command or flag, missing argument, or invalid `--format`) prints `Incorrect Usage: <problem>` and the command's help to stderr and exits 1, with urfave/cli's wording.
+- Flags only take their exact names. yargs also accepted camelCase (`--dryRun`) and negated (`--no-stats`) forms.
 - A bare `git-dedup --stats` shows help. The Node CLI printed nothing.
-- `docgen --format yaml` quotes some strings differently. The YAML parses to the same document.
+- The OpenCLI document also lists `--help` and `--version` as global flags, gives every argument a `type`, and does not mark `git-dedup store` as a group, because it runs the store health check itself. `docgen --format yaml` quotes some strings differently. The YAML parses to the same document.
 - `store add --all` sorts discovered paths case-insensitively, which is close to, but not identical to, JavaScript's `localeCompare`.
 - Errors from the operating system read differently (for example, Go reports `is a directory` where Node reports `EISDIR`).
 

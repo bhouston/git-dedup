@@ -1,9 +1,15 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
+	"os"
+	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	"github.com/bcdxn/opencli/validate"
 )
 
 func TestHumanizeBytes(t *testing.T) {
@@ -18,56 +24,111 @@ func TestHumanizeBytes(t *testing.T) {
 	}
 }
 
-func TestParse(t *testing.T) {
+// run runs git-dedup's own commands in process. The cases below never reach the store or Git.
+func run(t *testing.T, args ...string) (code int, stdout, stderr string) {
+	t.Helper()
+	var out, errOut bytes.Buffer
+	a := &app{version: "1.2.3", stdout: &out, stderr: &errOut}
+	code, err := a.main(args)
+	if err != nil {
+		errOut.WriteString("Error: " + err.Error() + "\n")
+		code = 1
+	}
+	return code, out.String(), errOut.String()
+}
+
+func TestCommandLine(t *testing.T) {
 	for _, c := range []struct {
-		args    []string
-		command string
-		problem string
+		args   []string
+		code   int
+		stdout string
+		stderr string
 	}{
-		{[]string{"store"}, "git-dedup store", ""},
-		{[]string{"store", "add", "x", "--dry-run", "--all", "--verbose"}, "git-dedup store add", ""},
-		{[]string{"--stats", "store", "add"}, "git-dedup store add", ""},
-		{[]string{"store", "remove"}, "git-dedup store remove", "Not enough non-option arguments: got 0, need at least 1"},
-		{[]string{"store", "refresh"}, "git-dedup store", "Unknown argument: refresh"},
-		{[]string{"store", "list", "a", "--bogus"}, "git-dedup store list", "Unknown arguments: bogus, a"},
-		{[]string{"docgen", "-o", "out.json", "--format", "yaml"}, "git-dedup docgen", ""},
-		{[]string{"docgen", "--format=xml"}, "git-dedup docgen", "Invalid values:\n  Argument: format, Given: \"xml\", Choices: \"json\", \"yaml\", \"markdown\""},
+		// A bare invocation writes help to stderr; --help writes it to stdout.
+		{nil, 0, "", "COMMANDS:"},
+		{[]string{"--help"}, 0, "COMMANDS:", ""},
+		{[]string{"--stats"}, 0, "COMMANDS:", ""},
+		{[]string{"store", "--help"}, 0, "remove", ""},
+		{[]string{"store", "add", "--help"}, 0, "--dry-run", ""},
+		// --version with anything else prints only git-dedup's version.
+		{[]string{"--version", "--stats"}, 0, "1.2.3\n", ""},
+		{[]string{"store", "list", "--version"}, 0, "1.2.3\n", ""},
+		{[]string{"store", "remove"}, 1, "", `Required argument "path" not set`},
+		{[]string{"store", "refresh"}, 1, "", `unknown command "refresh"`},
+		{[]string{"store", "list", "extra"}, 1, "", `unexpected argument "extra"`},
+		{[]string{"store", "list", "--bogus"}, 1, "", "flag provided but not defined: -bogus"},
+		{[]string{"store", "add", "--dry-run"}, 1, "", "Error: --dry-run requires --all\n"},
+		{[]string{"docgen", "--format=xml"}, 1, "", `invalid value "xml" for flag --format`},
 	} {
-		inv := parse(c.args)
-		if inv.command.name != c.command || inv.problem != c.problem {
-			t.Errorf("parse(%q) = %s, %q; want %s, %q", c.args, inv.command.name, inv.problem, c.command, c.problem)
+		code, stdout, stderr := run(t, c.args...)
+		if code != c.code || !strings.Contains(stdout, c.stdout) || !strings.Contains(stderr, c.stderr) ||
+			(c.stdout == "" && stdout != "") || (c.stderr == "" && stderr != "") {
+			t.Errorf("git-dedup %q = %d\nstdout: %s\nstderr: %s", c.args, code, stdout, stderr)
 		}
-	}
-	inv := parse([]string{"store", "add", "--no-stats", "--dryRun=true", "--all"})
-	if inv.flag("stats") || !inv.flag("dry-run") || !inv.flag("all") {
-		t.Errorf("flags = %v", inv.flags)
-	}
-	inv = parse([]string{"docgen", "-o", "out.json"})
-	if inv.flags["output"] != "out.json" {
-		t.Errorf("output = %q", inv.flags["output"])
 	}
 }
 
-func TestDocument(t *testing.T) {
-	data, err := json.Marshal(document("1.2.3"))
-	if err != nil {
-		t.Fatal(err)
+func TestDocgen(t *testing.T) {
+	code, data, stderr := run(t, "docgen")
+	if code != 0 || stderr != "" {
+		t.Fatalf("docgen = %d: %s", code, stderr)
+	}
+	if err := validate.ValidateJSON([]byte(data)); err != nil {
+		t.Errorf("invalid OpenCLI JSON: %v\n%s", err, data)
 	}
 	var doc struct {
-		Info     struct{ Version string }
-		Commands map[string]json.RawMessage
+		Info     struct{ Title, Version string }
+		Global   struct{ Flags []struct{ Name string } }
+		Commands map[string]struct {
+			Args []struct {
+				Name     string
+				Required bool
+			}
+			Flags []struct {
+				Name    string
+				Choices []struct{ Value string }
+			}
+		}
 	}
-	if err := json.Unmarshal(data, &doc); err != nil {
+	if err := json.Unmarshal([]byte(data), &doc); err != nil {
 		t.Fatal(err)
 	}
-	if doc.Info.Version != "1.2.3" || len(doc.Commands) != len(commands) || doc.Commands["git-dedup store add"] == nil {
+	if doc.Info.Title != "git-dedup" || doc.Info.Version != "1.2.3" ||
+		!slices.ContainsFunc(doc.Global.Flags, func(f struct{ Name string }) bool { return f.Name == "stats" }) {
 		t.Errorf("document = %s", data)
 	}
-	markdown := app{version: "1.2.3"}.markdown()
-	if !strings.Contains(markdown, "git-dedup store add [<path>] [--stats] [--all] [--dry-run] [--verbose]") {
-		t.Errorf("markdown usage missing:\n%s", markdown)
+	for _, name := range []string{"store", "store add", "store fetch", "store list", "store gc", "store remove", "store prune", "docgen", "clone"} {
+		if _, ok := doc.Commands["git-dedup "+name]; !ok {
+			t.Errorf("document lacks git-dedup %s", name)
+		}
 	}
-	if yaml := toYAML(document("1.2.3"), 0); !strings.Contains(yaml, "      - name: output\n        type: string\n") {
-		t.Errorf("yaml layout:\n%s", yaml)
+	if clone := doc.Commands["git-dedup clone"].Args; len(clone) != 2 || clone[0].Name != "repository" || !clone[0].Required || clone[1].Required {
+		t.Errorf("clone args = %+v", clone)
+	}
+	if remove := doc.Commands["git-dedup store remove"].Args; len(remove) != 1 || !remove[0].Required {
+		t.Errorf("store remove args = %+v", remove)
+	}
+	if format := doc.Commands["git-dedup docgen"].Flags[1]; format.Name != "format" || len(format.Choices) != 3 {
+		t.Errorf("docgen format flag = %+v", format)
+	}
+
+	code, yaml, _ := run(t, "docgen", "--format", "yaml")
+	if err := validate.ValidateYAML([]byte(yaml)); code != 0 || err != nil {
+		t.Errorf("invalid OpenCLI YAML (%d): %v\n%s", code, err, yaml)
+	}
+
+	_, markdown, _ := run(t, "docgen", "--format", "markdown")
+	for _, want := range []string{"## git-dedup store add\n", "## git-dedup clone\n", "git-dedup store add [<path>] [--stats] [--all] [--dry-run] [--verbose]"} {
+		if !strings.Contains(markdown, want) {
+			t.Errorf("markdown lacks %q:\n%s", want, markdown)
+		}
+	}
+
+	output := filepath.Join(t.TempDir(), "out.json")
+	if code, stdout, _ := run(t, "docgen", "-o", output); code != 0 || stdout != "" {
+		t.Errorf("docgen -o = %d, %q", code, stdout)
+	}
+	if written, err := os.ReadFile(output); err != nil || string(written) != data {
+		t.Errorf("docgen -o wrote %q, %v", written, err)
 	}
 }
