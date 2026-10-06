@@ -26,36 +26,25 @@ After `pnpm install`, Husky runs commitlint on commits. CI checks the PR title a
 
 ## Local checks
 
-Use the Node version in `.nvmrc` and the pnpm version in `package.json`.
+git-dedup is written in Go. Install the Go version in `go.mod` (for example `winget install GoLang.Go`, `brew install go`, or `sudo apt install golang`), plus the Node version in `.nvmrc` and the pnpm version in `package.json` for the test suites, the npm package, and the website.
 
 ```sh
 pnpm install --frozen-lockfile
-pnpm build
-pnpm typecheck
+pnpm build            # the binary for this machine, into packages/cli/native/
+pnpm typecheck        # go vet
 pnpm lint
 pnpm format:check
-pnpm test
+go test ./...
+pnpm test             # behavior suites in test/ against the binary
 pnpm test:proof
-pnpm package:check
+pnpm package:check    # every target, packed into the npm package
 pnpm docs:build
 pnpm test:workflow
 ```
 
-### Native (Go) port
+`pnpm test:coverage` runs the behavior suites against a coverage-instrumented binary and writes `coverage/native.out`. To build every release archive and package locally without publishing, install [GoReleaser](https://goreleaser.com/install/) and run `pnpm go:release:snapshot`.
 
-The native port is described in [docs/native-port.md](docs/native-port.md). Install the Go version in `go.mod` (for example `winget install GoLang.Go`, `brew install go`, or `sudo apt install golang`). To run the release snapshot, also install [GoReleaser](https://goreleaser.com/install/).
-
-```sh
-go vet ./...
-go test ./...
-pnpm test:native               # shared TypeScript suites against the Go binary
-pnpm test:native --coverage    # the same, writing coverage/native.out
-pnpm go:release:snapshot       # every target and package into dist/, nothing published
-```
-
-A behavior change belongs in both implementations until the TypeScript one is retired, and the shared suites must pass with both.
-
-The pre-commit hook formats and lints staged files and type-checks the workspace. CI runs the checks on Linux, macOS, and Windows. Tests use temporary repositories and isolated Git configuration. Tests that inject failures through a shell-script Git wrapper run only on Linux and macOS, because Windows starts only `.exe` files without a shell. Keep storage logic in `packages/core`, CLI presentation in `packages/cli`, and site content in `packages/website`. Preserve native Git argument semantics by forwarding unsupported invocations. Linked consumers depend on the shared object pool. Never delete unrelated directories.
+The pre-commit hook formats and lints staged files and runs `go vet`. CI runs the checks on Linux (x64 and arm64), macOS, and Windows. Tests use temporary repositories and isolated Git configuration. Tests that inject failures through a shell-script Git wrapper run only on Linux and macOS, because Windows starts only `.exe` files without a shell. Keep storage logic in `internal/core`, command-line presentation in `internal/cli`, the npm launcher in `packages/cli`, and site content in `packages/website`. [docs/native-port.md](docs/native-port.md) describes the on-disk store format, which must stay compatible. Preserve native Git argument semantics by forwarding unsupported invocations. Linked consumers depend on the shared object pool. Never delete unrelated directories.
 
 ## Releases
 
@@ -66,7 +55,7 @@ gh workflow run release.yml --ref main
 gh workflow run release.yml --ref main -f dry_run=true
 ```
 
-The workflow requires `main`, reruns CI on the selected commit, and uses semantic-release to select a shared version from Conventional Commits. It publishes `git-dedup-core` before `git-dedup` through npm trusted publishing. The website is private. See [RELEASING.md](RELEASING.md) for one-time activation and recovery.
+The workflow requires `main`, reruns CI on the selected commit, and uses semantic-release to select the version from Conventional Commits. It builds the native binaries with that version, publishes `git-dedup` through npm trusted publishing, and attaches archives and Linux packages to the GitHub Release. The website is private. See [RELEASING.md](RELEASING.md) for one-time activation and recovery.
 
 ## Security
 

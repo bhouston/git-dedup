@@ -18,8 +18,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, normalize, sep } from 'node:path';
-import type { StorageReport } from '../src/index.js';
-import { createGitDedup, keyForRemote, nativeBinary } from './native.js';
+import { createGitDedup, keyForRemote, type StorageReport } from './native.js';
 
 /** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
 function stop(child: ChildProcess): void {
@@ -152,30 +151,6 @@ it('lists registered remotes without creating an empty store', async () => {
   await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
-// The native binary's timers and clock cannot be mocked from here.
-it.skipIf(nativeBinary)('waits for a pool lock held by a live process instead of failing', async () => {
-  const { root, remote, store } = await fixture();
-  const lock = join(root, '.store.gitx-lock');
-  await mkdir(lock);
-  await writeFile(join(lock, 'owner'), `${process.pid}\n`);
-  // Skip the 50 ms lock polls and release the lock after the old 1200-poll limit.
-  const setTimer = globalThis.setTimeout;
-  let polls = 0;
-  const spy = vi.spyOn(globalThis, 'setTimeout').mockImplementation(((done: () => void, ms?: number) => {
-    if (ms !== 50) return setTimer(done, ms);
-    if (++polls === 1250) return setTimer(() => void rm(lock, { recursive: true }).then(done), 0);
-    return setTimer(done, 0);
-  }) as typeof setTimeout);
-  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  try {
-    expect(await api.run(['clone', remote, 'one'])).toBe(0);
-  } finally {
-    spy.mockRestore();
-  }
-  expect(polls).toBeGreaterThanOrEqual(1250);
-  await expectAlternate(store, join(root, 'one', '.git'));
-});
-
 async function lockFixture() {
   const root = await realpath(await mkdtemp(join(tmpdir(), 'gitx-lock-')));
   roots.push(root);
@@ -216,56 +191,35 @@ exec git "$@"
   20_000,
 );
 
-it.skipIf(nativeBinary)('reaps a lock whose heartbeat stopped even when its owner pid is reused', async () => {
-  const { root, store, lock } = await lockFixture();
-  // An unrelated live process now holds the dead holder's pid.
-  const unrelated = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], { stdio: 'ignore' });
-  daemons.push(unrelated);
-  // Each clock read jumps 10 s, so the 60 s heartbeat timeout passes within a few polls.
-  const now = performance.now.bind(performance);
-  let jumps = 0;
-  const spy = vi.spyOn(performance, 'now').mockImplementation(() => now() + ++jumps * 10_000);
-  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  try {
-    for (const owner of [`${unrelated.pid}\n`, undefined]) {
-      await mkdir(lock);
-      if (owner) {
-        await writeFile(join(lock, 'owner'), owner);
-        await writeFile(join(lock, 'heartbeat'), '');
-      }
-      expect(await api.gc()).toEqual({ compacted: true });
+// On Windows, a concurrent clone occasionally exits with 0xC0000409 inside Git; see #149.
+it.skipIf(process.platform === 'win32')(
+  'keeps one pool consistent under concurrent clones, adoption, and prune',
+  async () => {
+    const { root, source, remote, store } = await fixture();
+    git(['remote', 'set-url', 'origin', remote], source);
+    // Separate clients contend for the store lock; with the native binary each is its own process.
+    const client = () => createGitDedup({ cwd: root, env: testEnv(root, store) });
+    const clones = Array.from({ length: 6 }, (_, i) => `clone-${i}`);
+    const results = await Promise.all([
+      ...clones.map((name) => client().run(['clone', '-q', remote, name])),
+      client().add(source, true),
+    ]);
+    expect(results.slice(0, clones.length)).toEqual(clones.map(() => 0));
+    expect(results.at(-1)).toMatchObject({ added: 1, failed: 0 });
+    const api = client();
+    expect(await api.prune()).toMatchObject({});
+    for (const name of [...clones, 'source']) {
+      const checkout = join(root, name);
+      await expectAlternate(store, join(checkout, '.git'));
+      git(['fsck', '--full'], checkout);
     }
-  } finally {
-    spy.mockRestore();
-  }
-  await expect(stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
-});
-
-it('keeps one pool consistent under concurrent clones, adoption, and prune', async () => {
-  const { root, source, remote, store } = await fixture();
-  git(['remote', 'set-url', 'origin', remote], source);
-  // Separate clients contend for the store lock; with the native binary each is its own process.
-  const client = () => createGitDedup({ cwd: root, env: testEnv(root, store) });
-  const clones = Array.from({ length: 6 }, (_, i) => `clone-${i}`);
-  const results = await Promise.all([
-    ...clones.map((name) => client().run(['clone', '-q', remote, name])),
-    client().add(source, true),
-  ]);
-  expect(results.slice(0, clones.length)).toEqual(clones.map(() => 0));
-  expect(results.at(-1)).toMatchObject({ added: 1, failed: 0 });
-  const api = client();
-  expect(await api.prune()).toMatchObject({});
-  for (const name of [...clones, 'source']) {
-    const checkout = join(root, name);
-    await expectAlternate(store, join(checkout, '.git'));
-    git(['fsck', '--full'], checkout);
-  }
-  git(['fsck', '--full'], join(store, 'pool.git'));
-  expect((await api.storeInfo()).remoteCount).toBe(1);
-  // Every checkout is registered, so none is left holding objects that prune could reclaim.
-  expect(await readdir(join(store, 'consumers'))).toHaveLength(clones.length + 1);
-  expect(await readdir(join(store, 'clones')).catch(() => [])).toEqual([]);
-});
+    git(['fsck', '--full'], join(store, 'pool.git'));
+    expect((await api.storeInfo()).remoteCount).toBe(1);
+    // Every checkout is registered, so none is left holding objects that prune could reclaim.
+    expect(await readdir(join(store, 'consumers'))).toHaveLength(clones.length + 1);
+    expect(await readdir(join(store, 'clones')).catch(() => [])).toEqual([]);
+  },
+);
 
 it('clones twice into one pool and makes both consumers depend on it', async () => {
   const { root, remote, store } = await fixture();

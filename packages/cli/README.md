@@ -28,7 +28,7 @@ That's it. git-dedup automatically consolidates the new or existing project's hi
 
 ## Installation
 
-Requires **Node.js 22+ and Git** on macOS, Linux, or Windows.
+git-dedup is a native binary for macOS, Linux, and Windows on x64 and arm64, and needs **Git**. This package runs the binary for your platform through a small launcher (Node.js 18+); releases also offer archives and `.deb`, `.rpm`, and `.apk` packages on [GitHub Releases](https://github.com/bhouston/git-dedup/releases).
 
 ```sh
 npm install --global git-dedup

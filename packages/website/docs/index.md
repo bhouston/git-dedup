@@ -12,7 +12,7 @@ slug: /
 npm install -g git-dedup
 ```
 
-Requires Node.js 22+ and Git on macOS, Linux, or Windows.
+git-dedup is a native binary for macOS, Linux, and Windows on x64 and arm64, and needs Git. The npm package runs it through a small launcher (Node.js 18+). Without Node.js, download an archive, `.deb`, `.rpm`, or `.apk` from [GitHub Releases](https://github.com/bhouston/git-dedup/releases).
 
 ## Clone
 

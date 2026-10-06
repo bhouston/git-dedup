@@ -22,43 +22,28 @@
     "directory": "packages/cli"
   },
   "bin": {
-    "git-dedup": "./dist/bin.js"
+    "git-dedup": "./bin/git-dedup.js"
   },
   "files": [
-    "dist",
+    "bin",
+    "native",
     "README.md",
     "LICENSE"
   ],
+  "os": [
+    "darwin",
+    "linux",
+    "win32"
+  ],
+  "cpu": [
+    "x64",
+    "arm64"
+  ],
   "type": "module",
-  "exports": {
-    ".": {
-      "types": "./dist/index.d.ts",
-      "default": "./dist/index.js"
-    }
-  },
   "publishConfig": {
     "access": "public"
   },
-  "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist', { recursive: true, force: true })\" && tsc -p tsconfig.json && node -e \"require('node:fs').chmodSync('dist/bin.js', 0o755)\"",
-    "test": "vitest run",
-    "tsc": "tsc --noEmit -p tsconfig.json",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
-  },
-  "dependencies": {
-    "@clidoc/core": "^0.1.0",
-    "@clidoc/yargs": "^1.1.0",
-    "git-dedup-core": "workspace:*",
-    "humanize-units": "^2.0.4",
-    "yargs": "^18.0.0",
-    "yargs-file-commands": "^2.1.0"
-  },
-  "devDependencies": {
-    "@types/node": "^24.0.0",
-    "@types/yargs": "^17.0.35",
-    "vitest-command-line": "^0.9.1"
-  },
   "engines": {
-    "node": ">=22"
+    "node": ">=18"
   }
 }

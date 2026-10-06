@@ -229,7 +229,7 @@ it('reports a missing, invalid, or self-referencing Git executable', async () =>
     empty: true,
     checks: [{ name: 'git', ok: false, detail: 'Real Git executable not found on PATH' }],
   });
-  const own = createGitDedup({ cwd: root, gitPath: nativeBinary ?? process.argv[1]!, env: testEnv(root, store) });
+  const own = createGitDedup({ cwd: root, gitPath: nativeBinary, env: testEnv(root, store) });
   await expect(own.gitPath()).rejects.toThrow('must point to a real Git executable');
   const missing = createGitDedup({ cwd: root, gitPath: join(root, 'nope'), env: testEnv(root, store) });
   await expect(missing.gitPath()).rejects.toThrow('must point to a real Git executable');
@@ -300,8 +300,7 @@ it('rejects an invalid pool in doctor, and invalid registrations in list and pru
   await expect(api.listRemotes()).rejects.toThrow('Invalid git-dedup remote registration: bad.json');
   await rm(remotes, { recursive: true });
   await writeFile(remotes, 'not a directory');
-  if (nativeBinary) await expect(api.listRemotes()).rejects.toThrow(/remotes/);
-  else await expect(api.listRemotes()).rejects.toMatchObject({ code: 'ENOTDIR' });
+  await expect(api.listRemotes()).rejects.toThrow(/remotes/);
 });
 
 it('prunes with an empty index tree and refreshes the lock heartbeat', async () => {

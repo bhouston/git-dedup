@@ -1,6 +1,6 @@
 # Builds and publishes the native git-dedup binary. See RELEASING.md.
 #   goreleaser release --snapshot --clean   # local or CI dry run into dist/
-# Publishing steps skip themselves when their credentials are not set.
+# Publishing steps skip themselves when their credentials are unset or empty.
 version: 2
 project_name: git-dedup
 
@@ -40,14 +40,14 @@ sboms:
 notarize:
   macos:
     # Signs and notarizes the macOS binaries from any OS (through quill) when the Apple credentials are set.
-    - enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+    - enabled: '{{ if index .Env "MACOS_SIGN_P12" }}true{{ else }}false{{ end }}'
       sign:
-        certificate: '{{ .Env.MACOS_SIGN_P12 }}'
-        password: '{{ .Env.MACOS_SIGN_PASSWORD }}'
+        certificate: '{{ index .Env "MACOS_SIGN_P12" }}'
+        password: '{{ index .Env "MACOS_SIGN_PASSWORD" }}'
       notarize:
-        issuer_id: '{{ .Env.MACOS_NOTARY_ISSUER_ID }}'
-        key_id: '{{ .Env.MACOS_NOTARY_KEY_ID }}'
-        key: '{{ .Env.MACOS_NOTARY_KEY }}'
+        issuer_id: '{{ index .Env "MACOS_NOTARY_ISSUER_ID" }}'
+        key_id: '{{ index .Env "MACOS_NOTARY_KEY_ID" }}'
+        key: '{{ index .Env "MACOS_NOTARY_KEY" }}'
         wait: true
 
 nfpms:
@@ -75,25 +75,25 @@ homebrew_casks:
     repository:
       owner: bhouston
       name: homebrew-tap
-      token: '{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}'
+      token: '{{ index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}'
     homepage: https://git-dedup.ben3d.ca
     description: Share one copy of Git history across clones, worktrees, and submodules
     license: MIT
     dependencies:
       - formula: git
-    skip_upload: '{{ if isEnvSet "HOMEBREW_TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    skip_upload: '{{ if index .Env "HOMEBREW_TAP_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
 
 scoops:
   - name: git-dedup
     repository:
       owner: bhouston
       name: scoop-bucket
-      token: '{{ .Env.SCOOP_BUCKET_GITHUB_TOKEN }}'
+      token: '{{ index .Env "SCOOP_BUCKET_GITHUB_TOKEN" }}'
     homepage: https://git-dedup.ben3d.ca
     description: Share one copy of Git history across clones, worktrees, and submodules
     license: MIT
     depends: [git]
-    skip_upload: '{{ if isEnvSet "SCOOP_BUCKET_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    skip_upload: '{{ if index .Env "SCOOP_BUCKET_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
 
 winget:
   - name: git-dedup
@@ -110,7 +110,7 @@ winget:
       owner: bhouston
       name: winget-pkgs
       branch: 'git-dedup-{{ .Version }}'
-      token: '{{ .Env.WINGET_GITHUB_TOKEN }}'
+      token: '{{ index .Env "WINGET_GITHUB_TOKEN" }}'
       pull_request:
         enabled: true
         draft: false
@@ -118,7 +118,7 @@ winget:
           owner: microsoft
           name: winget-pkgs
           branch: master
-    skip_upload: '{{ if isEnvSet "WINGET_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
+    skip_upload: '{{ if index .Env "WINGET_GITHUB_TOKEN" }}false{{ else }}true{{ end }}'
 
 release:
   # semantic-release creates the GitHub Release; GoReleaser adds the native artifacts to it.

@@ -11,3 +11,4 @@ coverage/
 release-artifacts/
 packages/website/.generated/
 packages/website/docs/cli/
+packages/cli/native/

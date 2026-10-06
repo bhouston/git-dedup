@@ -7,27 +7,33 @@ gh workflow run release.yml --ref main                 # publish
 gh workflow run release.yml --ref main -f dry_run=true  # preview only
 ```
 
-The workflow refuses refs other than `main`, reruns CI, verifies that `main` has not moved since dispatch, builds the packages, and runs semantic-release. Conventional Commits since the last `v*` tag determine one shared version: `feat` is minor, `fix`/`perf` are patch, and a breaking change is major. Without release-worthy commits, the run is a no-op.
+The workflow refuses refs other than `main`, reruns CI, verifies that `main` has not moved since dispatch, and runs semantic-release. Conventional Commits since the last `v*` tag determine the version: `feat` is minor, `fix`/`perf` are patch, and a breaking change is major. Without release-worthy commits, the run is a no-op.
 
-The release configuration publishes `git-dedup-core` first, then `git-dedup`. `pnpm publish` resolves the CLI's `workspace:*` core dependency to a concrete version range. The website is private. Each GitHub Release contains generated notes and both package tarballs. Git tags and npm versions are the released version of record; source manifests are development snapshots. Do not manually bump versions, edit a changelog, or push release tags as part of a normal release.
+Before publishing, the release configuration builds the native binary for every supported platform with the released version (`scripts/build-native.mjs`), so `git-dedup --version` reports it. It then publishes the `git-dedup` npm package, which holds a Node launcher and those binaries. After semantic-release creates the GitHub Release, GoReleaser adds archives, checksums, SBOMs, and `.deb`/`.rpm`/`.apk`/Arch packages to it. The website is private. Each GitHub Release contains generated notes, the npm tarball, and the native artifacts. Git tags and npm versions are the released version of record; source manifests are development snapshots. Do not manually bump versions, edit a changelog, or push release tags as part of a normal release.
 
 ## One-time activation
 
-1. Publish `git-dedup-core` and `git-dedup` once through an authenticated npm account to establish ownership of the unscoped names. Publish the core package first. Then configure trusted publishing for later releases.
-2. On npmjs.com, configure **Trusted Publisher** for `git-dedup-core` and `git-dedup`. Choose GitHub Actions, GitHub user `bhouston`, repository `git-dedup`, workflow filename `release.yml`, and environment `npm`. Enable direct `npm publish` as an allowed action. The workflow uses OIDC (`id-token: write`), not `NPM_TOKEN`. [npm's trusted publishing guide](https://docs.npmjs.com/trusted-publishers/) describes these settings.
+1. Publish `git-dedup` once through an authenticated npm account to establish ownership of the unscoped name. Then configure trusted publishing for later releases.
+2. On npmjs.com, configure **Trusted Publisher** for `git-dedup`. Choose GitHub Actions, GitHub user `bhouston`, repository `git-dedup`, workflow filename `release.yml`, and environment `npm`. Enable direct `npm publish` as an allowed action. The workflow uses OIDC (`id-token: write`), not `NPM_TOKEN`. [npm's trusted publishing guide](https://docs.npmjs.com/trusted-publishers/) describes these settings.
 3. Create the GitHub `npm` environment and restrict it to `main` and authorized maintainers. Enable Pages with GitHub Actions as its source and set its custom domain to `git-dedup.ben3d.ca` to deploy at `https://git-dedup.ben3d.ca/`.
-4. Protect `main` with PRs and the passing checks the six `ci` matrix checks (macOS/Linux/Windows with Node 22/26) and `contribution` once the initial bootstrap is pushed.
+4. Protect `main` with PRs and the passing checks: the `ci` matrix (macOS/Linux/Windows with Node 22/26, and Linux arm64), `native packages`, and `contribution`.
 5. Before the first actual release, run a dry run and `pnpm package:check`. Confirm the proposed version does not already exist on npm.
 
 ## Recovery
 
-After the repository rename, check the trusted publisher for both npm packages before releasing. The GitHub repository must be `bhouston/git-dedup`; replace any connection that still names `gitx` while retaining workflow `release.yml` and environment `npm`.
+After the repository rename, check the trusted publisher for the npm package before releasing. The GitHub repository must be `bhouston/git-dedup`; replace any connection that still names `gitx` while retaining workflow `release.yml` and environment `npm`.
 
-Publishing two npm packages is not atomic. If the workflow fails part way, compare npm versions, the `v<version>` Git tag, and the run log. Finish only the missing package from the same release commit after identifying the cause. If npm publishing succeeded but the GitHub Release failed, create the release from the existing tag; never republish an existing npm version.
+Publishing is not atomic. If the workflow fails part way, compare the npm version, the `v<version>` Git tag, the GitHub Release, and the run log. If npm publishing succeeded but the GitHub Release failed, create the release from the existing tag; never republish an existing npm version. If only the GoReleaser step failed, check out the tag and run `goreleaser release --clean` with `GITHUB_TOKEN` set; it appends to the existing release.
 
-## Native binaries (not yet part of the release workflow)
+`git-dedup-core`, the earlier TypeScript library, is no longer published. To point its users at the CLI, run once from an authenticated npm account:
 
-`.goreleaser.yaml` builds the Go binary for Linux, macOS, and Windows on x64 and arm64, plus the archives, checksums, SBOMs, `.deb`/`.rpm`/`.apk`/Arch packages, a Homebrew cask, a Scoop manifest, and a winget manifest. CI runs it in snapshot mode on every change (the `native packages` job) and installs each Linux package in its distribution. The release workflow does not run it yet; when the native port reaches parity, add a step after `pnpm release` that runs `goreleaser release --clean` on the new tag (`release.mode: append` adds the artifacts to the GitHub Release that semantic-release created).
+```sh
+npm deprecate git-dedup-core "git-dedup-core is no longer maintained; run the git-dedup CLI instead"
+```
+
+## Native distribution channels
+
+`.goreleaser.yaml` builds the archives, packages, and manifests. CI runs it in snapshot mode on every change (the `native packages` job) and installs each Linux package in its distribution. The release workflow runs it after semantic-release; `release.mode: append` adds the artifacts to the GitHub Release.
 
 Each channel publishes only when its credentials are present:
 

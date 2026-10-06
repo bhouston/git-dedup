@@ -1,16 +1,11 @@
 import { defineConfig } from 'vitest/config';
 
+// The behavior suites run against the native binary (see test/native.ts); `pnpm build` places it.
 export default defineConfig({
   test: {
-    include: ['packages/{core,cli}/**/*.{test,spec}.ts'],
-    exclude: ['**/node_modules/**', '**/dist/**'],
+    include: ['test/**/*.test.ts'],
+    exclude: ['**/node_modules/**'],
     testTimeout: 60000,
     hookTimeout: 60000,
-    coverage: {
-      provider: 'v8',
-      reporter: ['text', 'lcov'],
-      include: ['packages/{core,cli}/src/**/*.ts'],
-      exclude: ['**/*.{test,spec}.ts', '**/*.d.ts'],
-    },
   },
 });
