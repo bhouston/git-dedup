@@ -62,9 +62,8 @@ Two lock tests mock Node's timers and clock and are skipped for the native binar
 ## Status
 
 - [x] Port of every command, including `fetch` from #144, with byte-compatible store files.
-- [x] Shared suites run against the binary on Windows.
+- [x] Shared suites pass against the binary on Linux x64/arm64, macOS, and Windows, and block CI.
 - [x] GoReleaser config: 6 targets, archives, deb/rpm/apk/Arch packages, Homebrew cask, Scoop, winget, SBOMs, macOS notarization, Windows signing hook.
-- [x] CI: native suites on Linux x64/arm64, macOS, and Windows (informational), plus package install checks in Debian, Ubuntu, Fedora, and Alpine.
-- [ ] Green on Linux and macOS, then make the `native` CI job required.
+- [x] CI: native suites on Linux x64/arm64, macOS, and Windows, plus package install checks in Debian, Ubuntu, Fedora, and Alpine.
 - [ ] Publishing: create the tap, Scoop bucket, winget-pkgs fork, apt/rpm repository, and signing credentials (see [RELEASING.md](../RELEASING.md)), then run GoReleaser from the release workflow.
 - [ ] npm: ship the Go binaries through per-platform optional dependencies and retire `packages/core`.

@@ -60,8 +60,6 @@ jobs:
   native:
     name: native (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # Informational until the native port passes the shared suites on every OS; then make it required.
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
