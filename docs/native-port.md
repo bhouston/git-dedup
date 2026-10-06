@@ -61,7 +61,7 @@ Two lock tests mock Node's timers and clock and are skipped for the native binar
 
 ## Status
 
-- [x] Port of every command, with byte-compatible store files.
+- [x] Port of every command, including `fetch` from #144, with byte-compatible store files.
 - [x] Shared suites run against the binary on Windows.
 - [x] GoReleaser config: 6 targets, archives, deb/rpm/apk/Arch packages, Homebrew cask, Scoop, winget, SBOMs, macOS notarization, Windows signing hook.
 - [x] CI: native suites on Linux x64/arm64, macOS, and Windows (informational), plus package install checks in Debian, Ubuntu, Fedora, and Alpine.

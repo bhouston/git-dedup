@@ -67,17 +67,30 @@ func TestParseClone(t *testing.T) {
 		!slices.Equal(request.forwarded, []string{"-q", "-b", "main"}) {
 		t.Errorf("parseClone = %+v, %q", request, reason)
 	}
-	for args, want := range map[string][]string{
-		"clone option --depth is not supported":                {"--depth=1", "https://h/a/b"},
-		"clone option --filter is not supported":               {"--filter", "blob:none", "https://h/a/b"},
-		"clone option --unknown is not supported":              {"--unknown=x", "https://h/a/b"},
-		"clone option -b requires a value":                     {"https://h/a/b", "-b"},
-		"clone expects a repository and an optional directory": {"a", "b", "c"},
-		"clone does not support an empty argument":             {"https://h/a/b", ""},
+	// Bandwidth hints are dropped so the pool and checkout receive full history.
+	request, reason = parseClone([]string{"--depth=1", "--filter", "blob:none", "--single-branch", "--sparse", "https://h/a/b"})
+	if reason != "" || !slices.Equal(request.forwarded, []string{"--sparse"}) {
+		t.Errorf("parseClone(bandwidth hints) = %+v, %q", request, reason)
+	}
+	window := "clone history window, filter, or missing option value is not supported"
+	for _, c := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--shallow-since=2020-01-01", "https://h/a/b"}, window},
+		{[]string{"--filter=blob:limit=1k", "https://h/a/b"}, window},
+		{[]string{"https://h/a/b", "--depth"}, window},
+		{[]string{"--mirror", "https://h/a/b"}, "clone option --mirror is not supported"},
+		{[]string{"https://h/a/b", "-b"}, "clone option -b requires a value"},
+		{[]string{"a", "b", "c"}, "clone expects a repository and an optional directory"},
+		{[]string{"https://h/a/b", ""}, "clone does not support an empty argument"},
 	} {
-		if _, reason := parseClone(want); reason != args {
-			t.Errorf("parseClone(%q) reason = %q, want %q", want, reason, args)
+		if _, reason := parseClone(c.args); reason != c.want {
+			t.Errorf("parseClone(%q) reason = %q, want %q", c.args, reason, c.want)
 		}
+	}
+	if full, ok := fullHistoryArgs([]string{"--deepen=3", "--unshallow", "-j", "--depth", "origin"}, true); !ok || !slices.Equal(full, []string{"-j", "--depth", "origin"}) {
+		t.Errorf("fullHistoryArgs(fetch) = %q, %v", full, ok)
 	}
 }
 

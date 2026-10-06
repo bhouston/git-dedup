@@ -1,7 +1,7 @@
 git-dedup <command> [options]
 
-Git commands pass through to Git; clone, submodule, and worktree can use the
-shared store.
+Git commands pass through to Git; clone, fetch, submodule, and worktree can use
+the shared store.
 
 Commands:
   git-dedup docgen  Write the OpenCLI document to a file, or stdout if --output

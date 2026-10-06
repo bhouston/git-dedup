@@ -128,15 +128,50 @@ func removeDotSegments(path string) string {
 	return "/" + strings.Join(out, "/")
 }
 
-var unsupportedClonePattern = regexp.MustCompile(`^(--depth|--shallow|--filter|--mirror|--bare|--reference|--dissociate|--no-hardlinks|--shared|--separate-git-dir|--bundle-uri|--sparse|--upload-pack|--server-option|--template|--config|--origin|--no-checkout|--single-branch|--no-single-branch|--revision|--jobs|-j|-o|-u|-c)(=|$)`)
-
-func unsupportedClone(args []string) string {
-	for _, arg := range args {
-		if unsupportedClonePattern.MatchString(arg) {
-			return arg
+// fullHistoryArgs strips bandwidth hints (--depth, --filter=blob:none or tree:0, single-branch switches, and
+// for fetch --deepen and --unshallow) so the pool receives full history. It returns false for history windows,
+// other filters, and options missing their value, which git-dedup leaves to plain Git.
+func fullHistoryArgs(args []string, fetch bool) ([]string, bool) {
+	result := []string{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "--" {
+			result = append(result, args[i:]...)
+			break
+		}
+		name, inline, hasInline := strings.Cut(arg, "=")
+		if name == "--shallow-since" || name == "--shallow-exclude" {
+			return nil, false
+		}
+		if name == "--depth" || (fetch && name == "--deepen") || name == "--filter" {
+			value := inline
+			if !hasInline {
+				i++
+				if i < len(args) {
+					value = args[i]
+				} else {
+					value = ""
+				}
+			}
+			if value == "" || strings.HasPrefix(value, "-") {
+				return nil, false
+			}
+			if name == "--filter" && value != "blob:none" && value != "tree:0" {
+				return nil, false
+			}
+			continue
+		}
+		if arg == "--single-branch" || arg == "--no-single-branch" || (fetch && arg == "--unshallow") {
+			continue
+		}
+		result = append(result, arg)
+		// Do not interpret another option's value as a bandwidth hint.
+		if slices.Contains([]string{"-b", "--branch", "--negotiation-tip", "--refmap", "--jobs", "-j"}, arg) && i+1 < len(args) {
+			i++
+			result = append(result, args[i])
 		}
 	}
-	return ""
+	return result, true
 }
 
 func optionName(arg string) string {
@@ -152,8 +187,9 @@ type cloneRequest struct {
 
 // parseClone returns the parsed clone, or the reason git-dedup cannot handle it.
 func parseClone(args []string) (cloneRequest, string) {
-	if unsupported := unsupportedClone(args); unsupported != "" {
-		return cloneRequest{}, "clone option " + optionName(unsupported) + " is not supported"
+	args, ok := fullHistoryArgs(args, false)
+	if !ok {
+		return cloneRequest{}, "clone history window, filter, or missing option value is not supported"
 	}
 	var positional []string
 	request := cloneRequest{forwarded: []string{}}
@@ -180,7 +216,7 @@ func parseClone(args []string) (cloneRequest, string) {
 			request.recurse = true
 			continue
 		}
-		if slices.Contains([]string{"-q", "--quiet", "-v", "--verbose", "--progress", "--no-tags"}, arg) {
+		if slices.Contains([]string{"-q", "--quiet", "-v", "--verbose", "--progress", "--no-tags", "--sparse"}, arg) {
 			request.forwarded = append(request.forwarded, arg)
 			continue
 		}

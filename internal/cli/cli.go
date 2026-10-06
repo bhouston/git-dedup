@@ -130,7 +130,7 @@ func (a app) printStorageReports(reports []core.StorageReport) {
 		}
 		fmt.Fprintf(a.stderr, "git-dedup: estimated private pack reduction %s; logical pack bytes only; actual disk reclaimed may differ.\n", humanizeBytes(total))
 	} else {
-		fmt.Fprint(a.stderr, "git-dedup: clone storage depends on objects already present in the shared pool.\n")
+		fmt.Fprintf(a.stderr, "git-dedup: %s storage depends on objects already present in the shared pool.\n", reports[0].Operation)
 	}
 }
 
