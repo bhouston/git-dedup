@@ -1,14 +1,15 @@
 package cli
 
 import (
-	"embed"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"slices"
 	"strings"
-)
 
-//go:embed help/*.txt
-var helpFiles embed.FS
+	"github.com/urfave/cli/v3"
+)
 
 const (
 	description    = "Faster checkouts, a fraction of the disk space: share one copy of Git history across clones, worktrees, and submodules"
@@ -16,244 +17,163 @@ const (
 	verboseSummary = "Show full Git errors for skipped and failed repositories"
 )
 
-type flagDef struct {
-	name    string
-	kind    string // "boolean" or "string"
-	alias   string
-	summary string
-	choices []string
-	// def is the default value shown in documentation: false for booleans, or a string.
-	def any
-}
+// docgenFormats are the values docgen --format accepts; the first is the default.
+var docgenFormats = []string{"json", "yaml", "markdown"}
 
-type argDef struct {
-	name     string
-	required bool
-	kind     string
-	summary  string
-}
+// usageError is a command line mistake that has already been reported with the command's help.
+type usageError struct{ err error }
 
-type commandDef struct {
-	name    string // full name, such as "git-dedup store add"
-	summary string
-	group   bool
-	args    []argDef
-	flags   []flagDef
-	help    string // embedded help file
-}
+func (e usageError) Error() string { return e.err.Error() }
 
-func boolFlag(name, summary string) flagDef {
-	return flagDef{name: name, kind: "boolean", summary: summary, def: false}
-}
-
-// commands mirrors the yargs command tree of the Node CLI, in its documentation order.
-var commands = []commandDef{
-	{
-		name:    "git-dedup docgen",
-		summary: "Write the OpenCLI document to a file, or stdout if --output is omitted",
-		flags: []flagDef{
-			{name: "output", kind: "string", alias: "o", summary: "Output file; defaults to stdout"},
-			{name: "format", kind: "string", summary: "Output format", choices: []string{"json", "yaml", "markdown"}, def: "json"},
-		},
-		help: "docgen",
-	},
-	{name: "git-dedup store", summary: "store commands", group: true, help: "store"},
-	{
-		name:    "git-dedup store add",
-		summary: "Add a local checkout to the shared store; linked checkouts depend on it",
-		args:    []argDef{{name: "path", kind: "string", summary: "Local checkout path (defaults to the current directory)"}},
-		flags: []flagDef{
-			boolFlag("stats", "Show the change in private pack storage"),
-			boolFlag("all", "Discover and add all checkouts under the directory"),
-			boolFlag("dry-run", "Preview checkouts discovered by --all without adding them"),
-			boolFlag("verbose", verboseSummary),
-		},
-		help: "store-add",
-	},
-	{name: "git-dedup store fetch", summary: "Fetch registered remotes into the shared object pool", help: "store-fetch"},
-	{name: "git-dedup store gc", summary: "Compact the shared object pool without pruning consumer objects", help: "store-gc"},
-	{name: "git-dedup store list", summary: "List remotes registered in the shared store", help: "store-list"},
-	{name: "git-dedup store prune", summary: "Reclaim pool objects that no registered checkout uses", help: "store-prune"},
-	{
-		name:    "git-dedup store remove",
-		summary: "Detach a checkout and its submodules from the shared store",
-		args:    []argDef{{name: "path", required: true, kind: "string", summary: "Local checkout path"}},
-		flags: []flagDef{
-			boolFlag("verbose", verboseSummary),
-			boolFlag("forget", "Release a deleted checkout so store prune can reclaim its objects"),
-		},
-		help: "store-remove",
-	},
-	{
-		name:    "git-dedup clone",
-		summary: "Clone a repository through the shared store when supported",
-		args:    []argDef{{name: "repository", required: true}, {name: "directory"}},
-	},
-}
-
-var rootCommand = commandDef{name: "git-dedup", help: "root"}
-
-var globalFlags = []flagDef{
-	{name: "version", kind: "boolean"},
-	{name: "help", kind: "boolean"},
-	{name: "stats", kind: "boolean", summary: statsSummary},
-}
-
-func lookupCommand(name string) *commandDef {
-	for i := range commands {
-		if commands[i].name == name {
-			return &commands[i]
-		}
+// command builds git-dedup's own command tree. Git commands never reach it; see app.main.
+func (a *app) command() *cli.Command {
+	pathArg := func(required bool, summary string) []cli.Argument {
+		return []cli.Argument{&cli.StringArg{Name: "path", UsageText: summary, Required: required}}
 	}
+	verbose := func() cli.Flag { return &cli.BoolFlag{Name: "verbose", Usage: verboseSummary} }
+	root := &cli.Command{
+		Name:  "git-dedup",
+		Usage: description,
+		Description: "Git commands pass through to Git; clone, fetch, submodule, and worktree can use\n" +
+			"the shared store.",
+		HideVersion: true,
+		Flags: []cli.Flag{
+			// Persistent, so --version and --stats also work after a command name.
+			&cli.BoolFlag{Name: "version", Aliases: []string{"v"}, Usage: "Show version number"},
+			&cli.BoolFlag{Name: "stats", Usage: statsSummary},
+		},
+		Action: a.rootAction,
+		Commands: []*cli.Command{
+			{
+				Name:  "docgen",
+				Usage: "Write the OpenCLI document to a file, or stdout if --output is omitted",
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "output", Aliases: []string{"o"}, Usage: "Output file; defaults to stdout"},
+					&cli.StringFlag{
+						Name:        "format",
+						Usage:       "Output format (" + strings.Join(docgenFormats, ", ") + ")",
+						Value:       docgenFormats[0],
+						DefaultText: docgenFormats[0],
+					},
+				},
+				Action: a.action(a.docgen),
+			},
+			{
+				Name:   "store",
+				Usage:  "Show the shared store and its health",
+				Action: a.action(a.storeInfo),
+				Commands: []*cli.Command{
+					{
+						Name:      "add",
+						Usage:     "Add a local checkout to the shared store; linked checkouts depend on it",
+						ArgsUsage: "[path]",
+						Arguments: pathArg(false, "Local checkout path (defaults to the current directory)"),
+						Flags: []cli.Flag{
+							&cli.BoolFlag{Name: "stats", Usage: "Show the change in private pack storage"},
+							&cli.BoolFlag{Name: "all", Usage: "Discover and add all checkouts under the directory"},
+							&cli.BoolFlag{Name: "dry-run", Usage: "Preview checkouts discovered by --all without adding them"},
+							verbose(),
+						},
+						Action: a.action(a.storeAdd),
+					},
+					{Name: "fetch", Usage: "Fetch registered remotes into the shared object pool", Action: a.action(a.storeFetch)},
+					{Name: "gc", Usage: "Compact the shared object pool without pruning consumer objects", Action: a.action(a.storeGC)},
+					{Name: "list", Usage: "List remotes registered in the shared store", Action: a.action(a.storeList)},
+					{Name: "prune", Usage: "Reclaim pool objects that no registered checkout uses", Action: a.action(a.storePrune)},
+					{
+						Name:      "remove",
+						Usage:     "Detach a checkout and its submodules from the shared store",
+						ArgsUsage: "<path>",
+						Arguments: pathArg(true, "Local checkout path"),
+						Flags: []cli.Flag{
+							verbose(),
+							&cli.BoolFlag{Name: "forget", Usage: "Release a deleted checkout so store prune can reclaim its objects"},
+						},
+						Action: a.action(a.storeRemove),
+					},
+				},
+			},
+		},
+		Writer:    a.stdout,
+		ErrWriter: a.stderr,
+		// Errors are returned to Main; urfave/cli must not call os.Exit.
+		ExitErrHandler: func(context.Context, *cli.Command, error) {},
+	}
+	walk(root, func(command *cli.Command) {
+		command.HideHelpCommand = true
+		command.OnUsageError = a.onUsageError
+	})
+	return root
+}
+
+func walk(command *cli.Command, visit func(*cli.Command)) {
+	visit(command)
+	for _, child := range command.Commands {
+		walk(child, visit)
+	}
+}
+
+// action adapts a handler to urfave/cli. The handler's exit code and error are kept on the app, so urfave/cli
+// only sees usage errors, which it must not treat as exit codes.
+func (a *app) action(handler func(*cli.Command) (int, error)) cli.ActionFunc {
+	return func(ctx context.Context, command *cli.Command) error {
+		if command.Args().Present() {
+			problem := fmt.Errorf("unexpected argument %q", command.Args().First())
+			if len(command.Commands) > 0 {
+				problem = fmt.Errorf("unknown command %q", command.Args().First())
+			}
+			return a.onUsageError(ctx, command, problem, false)
+		}
+		if command.Bool("version") {
+			fmt.Fprintln(a.stdout, a.version)
+			return nil
+		}
+		a.code, a.err = handler(command)
+		if errors.As(a.err, new(usageError)) {
+			return a.err
+		}
+		return nil
+	}
+}
+
+func (a *app) rootAction(ctx context.Context, command *cli.Command) error {
+	if command.Args().Present() {
+		return a.onUsageError(ctx, command, fmt.Errorf("unknown command %q", command.Args().First()), false)
+	}
+	if command.Bool("version") {
+		fmt.Fprintln(a.stdout, a.version)
+		return nil
+	}
+	// Like yargs' showHelp, a bare invocation writes help to stderr; --help writes it to stdout.
+	out := a.stdout
+	if a.bare {
+		out = a.stderr
+	}
+	showHelp(out, command)
 	return nil
 }
 
-func helpText(command *commandDef) string {
-	data, err := helpFiles.ReadFile("help/" + command.help + ".txt")
-	if err != nil {
-		panic(err)
+func (a *app) onUsageError(_ context.Context, command *cli.Command, err error, _ bool) error {
+	if errors.As(err, new(usageError)) {
+		return err
 	}
-	return string(data)
+	fmt.Fprintf(a.stderr, "Incorrect Usage: %s\n\n", err)
+	showHelp(a.stderr, command)
+	return usageError{err}
 }
 
-// invocation is a parsed git-dedup command line for one of git-dedup's own commands.
-type invocation struct {
-	command    *commandDef
-	positional []string
-	flags      map[string]string
-	help       bool
-	version    bool
-	stats      bool
-	problem    string
-}
-
-func camelCase(name string) string {
-	parts := strings.Split(name, "-")
-	for i := 1; i < len(parts); i++ {
-		if parts[i] != "" {
-			parts[i] = strings.ToUpper(parts[i][:1]) + parts[i][1:]
-		}
-	}
-	return strings.Join(parts, "")
-}
-
-// parse reads arguments like the Node CLI's strict yargs parser.
-func parse(args []string) invocation {
-	result := invocation{command: &rootCommand, flags: map[string]string{}}
-	var words, unknown []string
-	var options []string
-	for i := 0; i < len(args); i++ {
-		arg := args[i]
-		if arg == "--" {
-			words = append(words, args[i+1:]...)
-			break
-		}
-		if strings.HasPrefix(arg, "-") && arg != "-" {
-			// A string option takes the next argument as its value.
-			if !strings.Contains(arg, "=") && i+1 < len(args) && takesValue(args, arg) {
-				arg += "=" + args[i+1]
-				i++
-			}
-			options = append(options, arg)
-			continue
-		}
-		words = append(words, arg)
-	}
-	// Resolve the command from the leading words.
-	if len(words) > 0 && (words[0] == "store" || words[0] == "docgen") {
-		result.command = lookupCommand("git-dedup " + words[0])
-		words = words[1:]
-		if result.command.group && len(words) > 0 {
-			if sub := lookupCommand(result.command.name + " " + words[0]); sub != nil {
-				result.command = sub
-				words = words[1:]
-			}
-		}
-	}
-	allowed := append(slices.Clone(globalFlags), result.command.flags...)
-	for _, option := range options {
-		name, value, hasValue := strings.Cut(strings.TrimLeft(option, "-"), "=")
-		negated := false
-		flag := findFlag(allowed, name)
-		if flag == nil && strings.HasPrefix(name, "no-") {
-			if flag = findFlag(allowed, name[3:]); flag != nil && flag.kind == "boolean" {
-				negated = true
-			} else {
-				flag = nil
-			}
-		}
-		if flag == nil {
-			unknown = append(unknown, name)
-			continue
-		}
-		if flag.kind == "string" {
-			result.flags[flag.name] = value
-			continue
-		}
-		enabled := !negated
-		if hasValue {
-			enabled = value != "false"
-			if negated {
-				enabled = !enabled
-			}
-		}
-		switch flag.name {
-		case "help":
-			result.help = enabled
-		case "version":
-			result.version = enabled
-		case "stats":
-			// The global flag and store add's own --stats share one value, as in yargs.
-			result.stats = enabled
-			result.flags["stats"] = fmt.Sprint(enabled)
-		default:
-			result.flags[flag.name] = fmt.Sprint(enabled)
-		}
-	}
-	maxArgs := len(result.command.args)
-	if len(words) > maxArgs {
-		unknown = append(unknown, words[maxArgs:]...)
-		words = words[:maxArgs]
-	}
-	result.positional = words
+// showHelp writes a command's urfave/cli help to w.
+func showHelp(w io.Writer, command *cli.Command) {
+	template := cli.CommandHelpTemplate
 	switch {
-	case len(unknown) == 1:
-		result.problem = "Unknown argument: " + unknown[0]
-	case len(unknown) > 1:
-		result.problem = "Unknown arguments: " + strings.Join(unknown, ", ")
+	case command.Root() == command:
+		template = cli.RootCommandHelpTemplate
+	case len(command.VisibleCommands()) > 0:
+		template = cli.SubcommandHelpTemplate
 	}
-	if result.problem == "" {
-		required := 0
-		for _, arg := range result.command.args {
-			if arg.required {
-				required++
-			}
-		}
-		if len(words) < required {
-			result.problem = fmt.Sprintf("Not enough non-option arguments: got %d, need at least %d", len(words), required)
-		}
-	}
-	if format, ok := result.flags["format"]; ok && result.problem == "" && !slices.Contains([]string{"json", "yaml", "markdown"}, format) {
-		result.problem = fmt.Sprintf("Invalid values:\n  Argument: format, Given: %q, Choices: \"json\", \"yaml\", \"markdown\"", format)
-	}
-	return result
+	cli.HelpPrinter(w, template, command)
 }
 
-// takesValue reports whether a separate argument after arg is the value of a string option.
-func takesValue(args []string, arg string) bool {
-	name := strings.TrimLeft(arg, "-")
-	return (name == "output" || name == "o" || name == "format") && slices.Contains(args, "docgen")
-}
-
-func findFlag(flags []flagDef, name string) *flagDef {
-	for i := range flags {
-		if flags[i].name == name || camelCase(flags[i].name) == name || (flags[i].alias != "" && flags[i].alias == name) {
-			return &flags[i]
-		}
-	}
-	return nil
-}
-
-func (inv invocation) flag(name string) bool {
-	return inv.flags[name] == "true"
+func validFormat(format string) bool {
+	return slices.Contains(docgenFormats, format)
 }

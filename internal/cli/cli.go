@@ -3,18 +3,26 @@
 package cli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
 
 	"github.com/bhouston/git-dedup/internal/core"
 	"github.com/bhouston/git-dedup/internal/discover"
+	"github.com/urfave/cli/v3"
 )
 
 type app struct {
 	version string
 	stdout  io.Writer
 	stderr  io.Writer
+	// bare is set when git-dedup runs without arguments.
+	bare bool
+	// code and err are the result of the command handler that ran.
+	code int
+	err  error
 }
 
 // Main runs the CLI and returns the process exit code. Git commands keep their original argument array.
@@ -22,7 +30,7 @@ func Main(args []string, version string) int {
 	if code, handled := testAPI(args); handled {
 		return code
 	}
-	a := app{version: version, stdout: os.Stdout, stderr: os.Stderr}
+	a := &app{version: version, stdout: os.Stdout, stderr: os.Stderr}
 	code, err := a.main(args)
 	if err != nil {
 		fmt.Fprintln(a.stderr, "Error: "+err.Error())
@@ -31,7 +39,7 @@ func Main(args []string, version string) int {
 	return code
 }
 
-func (a app) main(args []string) (int, error) {
+func (a *app) main(args []string) (int, error) {
 	stats := len(args) > 0 && args[0] == "--stats"
 	forwarded := args
 	if stats {
@@ -55,46 +63,17 @@ func (a app) main(args []string) (int, error) {
 		fmt.Fprintf(a.stdout, "%s (git-dedup %s)\n", version, a.version)
 		return 0, nil
 	}
-	inv := parse(args)
-	if inv.problem != "" {
-		fmt.Fprint(a.stderr, helpText(inv.command)+"\n"+inv.problem+"\n")
-		return 1, nil
-	}
-	if inv.version && !inv.help {
-		fmt.Fprintln(a.stdout, a.version)
-		return 0, nil
-	}
-	if inv.help || inv.command == &rootCommand {
-		// Like yargs' showHelp, a bare invocation writes help to stderr; --help writes it to stdout.
-		out := a.stdout
-		if len(args) == 0 {
-			out = a.stderr
+	a.bare = len(args) == 0
+	if err := a.command().Run(context.Background(), append([]string{"git-dedup"}, args...)); err != nil {
+		if errors.As(err, new(usageError)) {
+			return 1, nil
 		}
-		fmt.Fprint(out, helpText(inv.command))
-		return 0, nil
+		return 1, err
 	}
-	switch inv.command.name {
-	case "git-dedup docgen":
-		return a.docgen(inv)
-	case "git-dedup store":
-		return a.storeInfo()
-	case "git-dedup store add":
-		return a.storeAdd(inv)
-	case "git-dedup store fetch":
-		return a.storeFetch()
-	case "git-dedup store gc":
-		return a.storeGC()
-	case "git-dedup store list":
-		return a.storeList()
-	case "git-dedup store prune":
-		return a.storePrune()
-	case "git-dedup store remove":
-		return a.storeRemove(inv)
-	}
-	return 1, fmt.Errorf("unknown command %s", inv.command.name)
+	return a.code, a.err
 }
 
-func (a app) runGit(args []string, stats bool) (int, error) {
+func (a *app) runGit(args []string, stats bool) (int, error) {
 	if !stats {
 		return core.New(core.Options{}).Run(args)
 	}
@@ -106,7 +85,7 @@ func (a app) runGit(args []string, stats bool) (int, error) {
 }
 
 // printStorageReports reports logical pack bytes; no filesystem allocation estimate is available.
-func (a app) printStorageReports(reports []core.StorageReport) {
+func (a *app) printStorageReports(reports []core.StorageReport) {
 	for _, report := range reports {
 		pool := "created"
 		if report.PoolReused {
@@ -141,7 +120,7 @@ func value(pointer *int64) int64 {
 	return *pointer
 }
 
-func (a app) storeInfo() (int, error) {
+func (a *app) storeInfo(*cli.Command) (int, error) {
 	client := core.New(core.Options{})
 	info := client.StoreInfo()
 	fmt.Fprintf(a.stdout, "%s\nRemotes: %d\nSize: %s\n", info.Path, info.RemoteCount, humanizeBytes(info.SizeBytes))
@@ -160,7 +139,7 @@ func (a app) storeInfo() (int, error) {
 	return code, nil
 }
 
-func (a app) reportRepositories(result *core.StoreAddResult, verbose bool) {
+func (a *app) reportRepositories(result *core.StoreAddResult, verbose bool) {
 	for _, repository := range result.Repositories {
 		if repository.Reason == "" {
 			continue
@@ -176,15 +155,14 @@ func (a app) reportRepositories(result *core.StoreAddResult, verbose bool) {
 	}
 }
 
-func (a app) storeAdd(inv invocation) (int, error) {
-	all, dryRun, verbose, stats := inv.flag("all"), inv.flag("dry-run"), inv.flag("verbose"), inv.flag("stats")
+func (a *app) storeAdd(command *cli.Command) (int, error) {
+	all, dryRun, verbose := command.Bool("all"), command.Bool("dry-run"), command.Bool("verbose")
+	// The global --stats and store add's own --stats mean the same thing, as in yargs.
+	stats := command.Bool("stats") || command.Root().Bool("stats")
 	if dryRun && !all {
 		return 1, fmt.Errorf("--dry-run requires --all")
 	}
-	path := ""
-	if len(inv.positional) > 0 {
-		path = inv.positional[0]
-	}
+	path := command.StringArg("path")
 	var reports []core.StorageReport
 	options := core.Options{}
 	if stats {
@@ -262,7 +240,7 @@ func boolCode(failed bool) int {
 	return 0
 }
 
-func (a app) storeFetch() (int, error) {
+func (a *app) storeFetch(*cli.Command) (int, error) {
 	result, err := core.New(core.Options{}).Fetch()
 	if err != nil {
 		return 1, err
@@ -276,7 +254,7 @@ func (a app) storeFetch() (int, error) {
 	return boolCode(result.Failed > 0), nil
 }
 
-func (a app) storeGC() (int, error) {
+func (a *app) storeGC(*cli.Command) (int, error) {
 	result, err := core.New(core.Options{}).GC()
 	if err != nil {
 		return 1, err
@@ -289,7 +267,7 @@ func (a app) storeGC() (int, error) {
 	return 0, nil
 }
 
-func (a app) storeList() (int, error) {
+func (a *app) storeList(*cli.Command) (int, error) {
 	remotes, err := core.New(core.Options{}).ListRemotes()
 	if err != nil {
 		return 1, err
@@ -305,7 +283,7 @@ func (a app) storeList() (int, error) {
 	return 0, nil
 }
 
-func (a app) storePrune() (int, error) {
+func (a *app) storePrune(*cli.Command) (int, error) {
 	result, err := core.New(core.Options{}).Prune()
 	if err != nil {
 		return 1, err
@@ -314,10 +292,10 @@ func (a app) storePrune() (int, error) {
 	return 0, nil
 }
 
-func (a app) storeRemove(inv invocation) (int, error) {
-	path, verbose := inv.positional[0], inv.flag("verbose")
+func (a *app) storeRemove(command *cli.Command) (int, error) {
+	path, verbose := command.StringArg("path"), command.Bool("verbose")
 	client := core.New(core.Options{})
-	if inv.flag("forget") {
+	if command.Bool("forget") {
 		forgotten, err := client.Forget(path)
 		if err != nil {
 			return 1, err
