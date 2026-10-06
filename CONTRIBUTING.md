@@ -41,6 +41,20 @@ pnpm docs:build
 pnpm test:workflow
 ```
 
+### Native (Go) port
+
+The native port is described in [docs/native-port.md](docs/native-port.md). Install the Go version in `go.mod` (for example `winget install GoLang.Go`, `brew install go`, or `sudo apt install golang`). To run the release snapshot, also install [GoReleaser](https://goreleaser.com/install/).
+
+```sh
+go vet ./...
+go test ./...
+pnpm test:native               # shared TypeScript suites against the Go binary
+pnpm test:native --coverage    # the same, writing coverage/native.out
+pnpm go:release:snapshot       # every target and package into dist/, nothing published
+```
+
+A behavior change belongs in both implementations until the TypeScript one is retired, and the shared suites must pass with both.
+
 The pre-commit hook formats and lints staged files and type-checks the workspace. CI runs the checks on Linux, macOS, and Windows. Tests use temporary repositories and isolated Git configuration. Tests that inject failures through a shell-script Git wrapper run only on Linux and macOS, because Windows starts only `.exe` files without a shell. Keep storage logic in `packages/core`, CLI presentation in `packages/cli`, and site content in `packages/website`. Preserve native Git argument semantics by forwarding unsupported invocations. Linked consumers depend on the shared object pool. Never delete unrelated directories.
 
 ## Releases

@@ -18,7 +18,8 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, normalize, sep } from 'node:path';
-import { createGitDedup, keyForRemote, type StorageReport } from '../src/index.js';
+import type { StorageReport } from '../src/index.js';
+import { createGitDedup, keyForRemote, nativeBinary } from './native.js';
 
 /** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
 function stop(child: ChildProcess): void {
@@ -151,7 +152,8 @@ it('lists registered remotes without creating an empty store', async () => {
   await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
-it('waits for a pool lock held by a live process instead of failing', async () => {
+// The native binary's timers and clock cannot be mocked from here.
+it.skipIf(nativeBinary)('waits for a pool lock held by a live process instead of failing', async () => {
   const { root, remote, store } = await fixture();
   const lock = join(root, '.store.gitx-lock');
   await mkdir(lock);
@@ -214,7 +216,7 @@ exec git "$@"
   20_000,
 );
 
-it('reaps a lock whose heartbeat stopped even when its owner pid is reused', async () => {
+it.skipIf(nativeBinary)('reaps a lock whose heartbeat stopped even when its owner pid is reused', async () => {
   const { root, store, lock } = await lockFixture();
   // An unrelated live process now holds the dead holder's pid.
   const unrelated = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], { stdio: 'ignore' });

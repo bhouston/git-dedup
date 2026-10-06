@@ -56,3 +56,71 @@ jobs:
       - name: Flag audit findings
         if: steps.audit.outcome == 'failure'
         run: echo '::warning::Dependency audit found vulnerabilities or could not reach the registry. Review the audit step.'
+
+  native:
+    name: native (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    # Informational until the native port passes the shared suites on every OS; then make it required.
+    continue-on-error: true
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: pnpm/action-setup@v5
+      - uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: go vet ./...
+      - run: go test ./...
+      # The shared TypeScript behavior suites, run against the native binary with Go coverage.
+      - run: pnpm test:native --coverage
+      - uses: codecov/codecov-action@v5
+        if: ${{ !cancelled() && hashFiles('coverage/native.out') != '' }}
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage/native.out
+          flags: native-${{ runner.os }}-${{ runner.arch }}
+          fail_ci_if_error: false
+
+  native-packages:
+    name: native packages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: anchore/sbom-action/download-syft@v0
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --snapshot --clean
+      - name: Install each package in its distribution
+        run: |
+          check='git-dedup --version && git-dedup store'
+          docker run --rm -v "$PWD/dist:/dist" debian:stable-slim sh -ec "apt-get update -qq && apt-get install -y -qq /dist/*_amd64.deb >/dev/null && $check"
+          docker run --rm -v "$PWD/dist:/dist" ubuntu:22.04 sh -ec "apt-get update -qq && apt-get install -y -qq /dist/*_amd64.deb >/dev/null && $check"
+          docker run --rm -v "$PWD/dist:/dist" fedora:latest sh -ec "dnf install -y -q /dist/*.x86_64.rpm && $check"
+          docker run --rm -v "$PWD/dist:/dist" alpine:latest sh -ec "apk add -q --allow-untrusted /dist/*_x86_64.apk && $check"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: native-snapshot
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*.deb
+            dist/*.rpm
+            dist/*.apk
+            dist/checksums.txt

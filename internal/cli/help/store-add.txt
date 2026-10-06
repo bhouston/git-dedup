@@ -1,0 +1,17 @@
+git-dedup store add [path]
+
+Add a local checkout to the shared store; linked checkouts depend on it
+
+Positionals:
+  path  Local checkout path (defaults to the current directory)         [string]
+
+Options:
+  --version  Show version number                                       [boolean]
+  --help     Show help                                                 [boolean]
+  --stats    Show the change in private pack storage  [boolean] [default: false]
+  --all      Discover and add all checkouts under the directory
+                                                      [boolean] [default: false]
+  --dry-run  Preview checkouts discovered by --all without adding them
+                                                      [boolean] [default: false]
+  --verbose  Show full Git errors for skipped and failed repositories
+                                                      [boolean] [default: false]

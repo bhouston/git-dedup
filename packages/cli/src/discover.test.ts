@@ -2,9 +2,11 @@ import { execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { createGitDedup } from 'git-dedup-core';
 import { afterEach, expect, it } from 'vitest';
-import { discoverCheckouts } from './discover.js';
+import { createGitDedup, nativeBinary, nativeDiscoverCheckouts } from '../../core/test/native.js';
+import { discoverCheckouts as typescriptDiscoverCheckouts } from './discover.js';
+
+const discoverCheckouts = nativeBinary ? nativeDiscoverCheckouts : typescriptDiscoverCheckouts;
 
 const windows = process.platform === 'win32';
 const realGit = execFileSync(windows ? 'where' : 'which', ['git'], { encoding: 'utf8' })

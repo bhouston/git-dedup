@@ -1,0 +1,8 @@
+git-dedup store gc
+
+Compact the shared object pool without pruning consumer objects
+
+Options:
+  --version  Show version number                                       [boolean]
+  --help     Show help                                                 [boolean]
+  --stats    Show object pool use and checkout adoption measurements   [boolean]

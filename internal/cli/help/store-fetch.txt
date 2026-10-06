@@ -1,0 +1,8 @@
+git-dedup store fetch
+
+Fetch registered remotes into the shared object pool
+
+Options:
+  --version  Show version number                                       [boolean]
+  --help     Show help                                                 [boolean]
+  --stats    Show object pool use and checkout adoption measurements   [boolean]

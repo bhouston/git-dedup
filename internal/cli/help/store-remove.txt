@@ -1,0 +1,15 @@
+git-dedup store remove <path>
+
+Detach a checkout and its submodules from the shared store
+
+Positionals:
+  path  Local checkout path                                  [string] [required]
+
+Options:
+  --version  Show version number                                       [boolean]
+  --help     Show help                                                 [boolean]
+  --stats    Show object pool use and checkout adoption measurements   [boolean]
+  --verbose  Show full Git errors for skipped and failed repositories
+                                                      [boolean] [default: false]
+  --forget   Release a deleted checkout so store prune can reclaim its objects
+                                                      [boolean] [default: false]
