@@ -4,7 +4,7 @@ import { mkdtemp, mkdir, writeFile, readFile, realpath, rm, access } from 'node:
 import { createServer } from 'node:net';
 import { join, normalize } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createGitDedup } from '../src/index.js';
+import { createGitDedup } from './native.js';
 
 /** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
 function stop(child: ChildProcess): void {

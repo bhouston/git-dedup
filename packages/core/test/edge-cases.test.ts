@@ -5,7 +5,7 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from '
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, sep } from 'node:path';
-import { createGitDedup, keyForRemote } from '../src/index.js';
+import { createGitDedup, keyForRemote, nativeBinary } from './native.js';
 
 /** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
 function stop(child: ChildProcess): void {
@@ -229,7 +229,7 @@ it('reports a missing, invalid, or self-referencing Git executable', async () =>
     empty: true,
     checks: [{ name: 'git', ok: false, detail: 'Real Git executable not found on PATH' }],
   });
-  const own = createGitDedup({ cwd: root, gitPath: process.argv[1]!, env: testEnv(root, store) });
+  const own = createGitDedup({ cwd: root, gitPath: nativeBinary ?? process.argv[1]!, env: testEnv(root, store) });
   await expect(own.gitPath()).rejects.toThrow('must point to a real Git executable');
   const missing = createGitDedup({ cwd: root, gitPath: join(root, 'nope'), env: testEnv(root, store) });
   await expect(missing.gitPath()).rejects.toThrow('must point to a real Git executable');
@@ -283,7 +283,8 @@ it('rejects an invalid pool in doctor, and invalid registrations in list and pru
   const id = await readFile(idFile, 'utf8');
   await rm(idFile);
   await mkdir(idFile);
-  await expect(api.prune()).rejects.toThrow('EISDIR');
+  // Node names the error EISDIR; Go reports the operating system's message.
+  await expect(api.prune()).rejects.toThrow(/EISDIR|is a directory|Incorrect function/);
   await rm(idFile, { recursive: true });
   await writeFile(idFile, id);
   // An unreadable index and unsupported ref storage block pruning.
@@ -299,7 +300,8 @@ it('rejects an invalid pool in doctor, and invalid registrations in list and pru
   await expect(api.listRemotes()).rejects.toThrow('Invalid git-dedup remote registration: bad.json');
   await rm(remotes, { recursive: true });
   await writeFile(remotes, 'not a directory');
-  await expect(api.listRemotes()).rejects.toMatchObject({ code: 'ENOTDIR' });
+  if (nativeBinary) await expect(api.listRemotes()).rejects.toThrow(/remotes/);
+  else await expect(api.listRemotes()).rejects.toMatchObject({ code: 'ENOTDIR' });
 });
 
 it('prunes with an empty index tree and refreshes the lock heartbeat', async () => {

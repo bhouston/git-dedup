@@ -18,7 +18,8 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, normalize, sep } from 'node:path';
-import { createGitDedup, keyForRemote, type StorageReport } from '../src/index.js';
+import type { StorageReport } from '../src/index.js';
+import { createGitDedup, keyForRemote, nativeBinary } from './native.js';
 
 /** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
 function stop(child: ChildProcess): void {
@@ -151,7 +152,8 @@ it('lists registered remotes without creating an empty store', async () => {
   await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
-it('waits for a pool lock held by a live process instead of failing', async () => {
+// The native binary's timers and clock cannot be mocked from here.
+it.skipIf(nativeBinary)('waits for a pool lock held by a live process instead of failing', async () => {
   const { root, remote, store } = await fixture();
   const lock = join(root, '.store.gitx-lock');
   await mkdir(lock);
@@ -214,7 +216,7 @@ exec git "$@"
   20_000,
 );
 
-it('reaps a lock whose heartbeat stopped even when its owner pid is reused', async () => {
+it.skipIf(nativeBinary)('reaps a lock whose heartbeat stopped even when its owner pid is reused', async () => {
   const { root, store, lock } = await lockFixture();
   // An unrelated live process now holds the dead holder's pid.
   const unrelated = spawn(process.execPath, ['-e', 'setTimeout(() => {}, 30_000)'], { stdio: 'ignore' });
@@ -237,6 +239,32 @@ it('reaps a lock whose heartbeat stopped even when its owner pid is reused', asy
     spy.mockRestore();
   }
   await expect(stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
+});
+
+it('keeps one pool consistent under concurrent clones, adoption, and prune', async () => {
+  const { root, source, remote, store } = await fixture();
+  git(['remote', 'set-url', 'origin', remote], source);
+  // Separate clients contend for the store lock; with the native binary each is its own process.
+  const client = () => createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const clones = Array.from({ length: 6 }, (_, i) => `clone-${i}`);
+  const results = await Promise.all([
+    ...clones.map((name) => client().run(['clone', '-q', remote, name])),
+    client().add(source, true),
+  ]);
+  expect(results.slice(0, clones.length)).toEqual(clones.map(() => 0));
+  expect(results.at(-1)).toMatchObject({ added: 1, failed: 0 });
+  const api = client();
+  expect(await api.prune()).toMatchObject({});
+  for (const name of [...clones, 'source']) {
+    const checkout = join(root, name);
+    await expectAlternate(store, join(checkout, '.git'));
+    git(['fsck', '--full'], checkout);
+  }
+  git(['fsck', '--full'], join(store, 'pool.git'));
+  expect((await api.storeInfo()).remoteCount).toBe(1);
+  // Every checkout is registered, so none is left holding objects that prune could reclaim.
+  expect(await readdir(join(store, 'consumers'))).toHaveLength(clones.length + 1);
+  expect(await readdir(join(store, 'clones')).catch(() => [])).toEqual([]);
 });
 
 it('clones twice into one pool and makes both consumers depend on it', async () => {

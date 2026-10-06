@@ -16,8 +16,12 @@ function stop(child: ChildProcess): void {
 
 extendMatchers();
 
+// GIT_DEDUP_BIN runs this suite against a native binary instead of the Node CLI.
 const bin = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
-const cli = commandLine({ command: ['node', bin], name: 'git-dedup' });
+const cli = commandLine({
+  command: process.env.GIT_DEDUP_BIN ? [process.env.GIT_DEDUP_BIN] : ['node', bin],
+  name: 'git-dedup',
+});
 const dirs: string[] = [];
 const daemons: ChildProcess[] = [];
 
@@ -432,7 +436,7 @@ it.skipIf(process.platform === 'win32')('intercepts Actions-style fetches throug
   const env = isolatedEnv(dir);
   const shimDir = join(dir, 'shim');
   await mkdir(shimDir);
-  await symlink(bin, join(shimDir, 'git'));
+  await symlink(process.env.GIT_DEDUP_BIN ?? bin, join(shimDir, 'git'));
   env.PATH = `${shimDir}:${env.PATH}`;
   const run = (args: string[]) =>
     execFileSync('git', args, { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();

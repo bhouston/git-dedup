@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, readdir, realpath, rm, writeFile } from 'node
 import { execFileSync } from 'node:child_process';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
-import { createGitDedup } from '../src/index.js';
+import { createGitDedup } from './native.js';
 
 const roots: string[] = [];
 afterEach(async () => {
