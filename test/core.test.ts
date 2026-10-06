@@ -18,7 +18,7 @@ import {
 } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, normalize, sep } from 'node:path';
-import { createGitDedup, keyForRemote, type StorageReport } from './native.js';
+import { createGitDedup, keyForRemote, type StorageReport, waitForPort } from './native.js';
 
 /** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
 function stop(child: ChildProcess): void {
@@ -93,7 +93,7 @@ async function fixture() {
     { stdio: 'ignore' },
   );
   daemons.push(daemon);
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await waitForPort(port);
   return { root, source, remote: `git://127.0.0.1:${port}/team/project.git`, store: join(root, 'store') };
 }
 

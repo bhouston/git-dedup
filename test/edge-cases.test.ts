@@ -5,7 +5,7 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from '
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, sep } from 'node:path';
-import { createGitDedup, keyForRemote, nativeBinary } from './native.js';
+import { createGitDedup, keyForRemote, nativeBinary, waitForPort } from './native.js';
 
 /** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
 function stop(child: ChildProcess): void {
@@ -94,7 +94,7 @@ async function fixture() {
       { stdio: 'ignore' },
     ),
   );
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await waitForPort(port);
   return { root, source, remote: `git://127.0.0.1:${port}/team/project.git`, store: join(root, 'store') };
 }
 

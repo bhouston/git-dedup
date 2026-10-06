@@ -4,6 +4,7 @@
  */
 import { spawn, spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { createConnection } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -144,4 +145,22 @@ export function discoverCheckouts(directory: string, git = 'git') {
     path: directory,
     git,
   });
+}
+
+/** Resolves once a local TCP port accepts connections, such as a `git daemon` that is still starting. */
+export async function waitForPort(port: number, timeoutMs = 10_000): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  for (;;) {
+    const connected = await new Promise<boolean>((resolve) => {
+      const socket = createConnection({ port, host: '127.0.0.1' });
+      socket.once('connect', () => {
+        socket.destroy();
+        resolve(true);
+      });
+      socket.once('error', () => resolve(false));
+    });
+    if (connected) return;
+    if (Date.now() > deadline) throw new Error(`Nothing listened on port ${port} within ${timeoutMs} ms`);
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
 }
