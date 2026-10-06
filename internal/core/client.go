@@ -165,6 +165,12 @@ func (c *Client) GitPath() (string, error) {
 		return c.cachedGit, nil
 	}
 	own := ownExecutable()
+	// The npm launcher runs this binary; a `git` shim pointing at the launcher is git-dedup too.
+	launcher := ""
+	if path := lookupEnv(c.env, "GIT_DEDUP_LAUNCHER"); path != "" {
+		launcher, _ = realpath(path)
+	}
+	isSelf := func(actual string) bool { return actual == own || (launcher != "" && actual == launcher) }
 	candidate := c.options.GitPath
 	if candidate == "" {
 		// Windows names executables with an extension. Only .exe spawns without a shell, so skip .cmd shims.
@@ -178,7 +184,7 @@ func (c *Client) GitPath() (string, error) {
 			}
 			path := resolvePath(c.cwd, filepath.Join(part, name))
 			actual, err := realpath(path)
-			if err != nil || actual == own {
+			if err != nil || isSelf(actual) {
 				continue
 			}
 			if isExecutable(path) {
@@ -198,7 +204,7 @@ func (c *Client) GitPath() (string, error) {
 		}
 	}
 	actual, err := realpath(candidate)
-	if err != nil || actual == own {
+	if err != nil || isSelf(actual) {
 		return "", errors.New("git-dedup.gitPath must point to a real Git executable, not git-dedup itself")
 	}
 	if !isExecutable(candidate) {

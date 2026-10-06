@@ -3,10 +3,7 @@ import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promis
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, expect, it } from 'vitest';
-import { createGitDedup, nativeBinary, nativeDiscoverCheckouts } from '../../core/test/native.js';
-import { discoverCheckouts as typescriptDiscoverCheckouts } from './discover.js';
-
-const discoverCheckouts = nativeBinary ? nativeDiscoverCheckouts : typescriptDiscoverCheckouts;
+import { createGitDedup, discoverCheckouts } from './native.js';
 
 const windows = process.platform === 'win32';
 const realGit = execFileSync(windows ? 'where' : 'which', ['git'], { encoding: 'utf8' })

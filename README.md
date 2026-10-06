@@ -30,7 +30,7 @@ git-dedup store add ./my-existing-repo
 
 That's it. git-dedup automatically consolidates the new or existing project's history into a shared store in `~/.git-dedup` or if its history already existed there, it reuses it automatically.
 
-Requires **Node.js 22+ and Git**. Tested on macOS, Linux, and Windows.
+git-dedup is a native binary for macOS, Linux, and Windows on x64 and arm64; it only needs **Git**. The npm package runs the binary for your platform through a small launcher (Node.js 18+). Without Node.js, download an archive, `.deb`, `.rpm`, or `.apk` from [GitHub Releases](https://github.com/bhouston/git-dedup/releases).
 
 **[Documentation](https://git-dedup.ben3d.ca/) · [CLI reference](https://git-dedup.ben3d.ca/docs/cli) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
 
@@ -85,28 +85,16 @@ Changing `GIT_DEDUP_STORE` selects a different store; it does not move the exist
 
 Your checkouts read their history from the shared store. Deleting it breaks every repository consolidated into it. See the [store guide](https://git-dedup.ben3d.ca/docs/safety) for moving or detaching checkouts.
 
-## Packages
+## Repository layout
 
-| Package                                                                     | Purpose                                                             |
-| --------------------------------------------------------------------------- | ------------------------------------------------------------------- |
-| [git-dedup](https://www.npmjs.com/package/git-dedup)                        | CLI interface, Git forwarding, and `git-dedup docgen` documentation |
-| [git-dedup-core](https://www.npmjs.com/package/git-dedup-core)              | Git operations, object pool, and storage API                        |
-| [Website](https://github.com/bhouston/git-dedup/tree/main/packages/website) | Docusaurus documentation and project site; not published to npm     |
+| Path                                                                        | Contents                                                                                             |
+| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
+| [cmd/git-dedup](cmd/git-dedup), [internal](internal)                        | The Go implementation                                                                                |
+| [packages/cli](packages/cli)                                                | The [git-dedup](https://www.npmjs.com/package/git-dedup) npm package: a launcher and native binaries |
+| [test](test)                                                                | Behavior suites that drive the binary                                                                |
+| [Website](https://github.com/bhouston/git-dedup/tree/main/packages/website) | Docusaurus documentation and project site; not published to npm                                      |
 
-For scripts and applications:
-
-```sh
-npm install git-dedup-core
-```
-
-```ts
-import { createGitDedup } from 'git-dedup-core';
-
-const dedup = createGitDedup({ cwd: process.cwd() });
-process.exitCode = await dedup.run(['clone', 'https://github.com/bhouston/git-dedup.git']);
-```
-
-See the [core API guide](https://github.com/bhouston/git-dedup/tree/main/packages/core). After installing globally, the [agent setup guide](https://git-dedup.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `git-dedup` explicitly.
+The `git-dedup-core` npm package (the earlier TypeScript library) is no longer maintained. Scripts can run `git-dedup` as a command instead. After installing, the [agent setup guide](https://git-dedup.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `git-dedup` explicitly.
 
 ## Development
 
@@ -117,7 +105,7 @@ pnpm check
 pnpm test:proof
 ```
 
-`pnpm check` runs Oxlint, Oxfmt, TypeScript checks, Vitest, workflow tests, npm package checks, and the documentation build. CLI tests use `vitest-command-line`. The proof script creates temporary loopback Git remotes and verifies that concurrent clones share one object pool and remain valid after pool maintenance.
+Development needs Go (the version in `go.mod`), Node.js, and pnpm. `pnpm build` compiles the binary for this machine. `pnpm check` runs Oxlint, Oxfmt, `go vet`, the Vitest behavior suites against the binary, workflow tests, npm package checks, and the documentation build; `go test ./...` runs the Go unit tests. The proof script creates temporary loopback Git remotes and verifies that concurrent clones share one object pool and remain valid after pool maintenance.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [RELEASING.md](RELEASING.md) for release setup.
 

@@ -1,12 +1,12 @@
 import { access, mkdir, mkdtemp, realpath, rm, symlink, readFile, readdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createServer } from 'node:net';
 import { validate } from '@clidoc/core';
 import { afterEach, describe, expect, it } from 'vitest';
 import { commandLine, extendMatchers } from 'vitest-command-line';
+import { launcher } from './native.js';
 
 /** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
 function stop(child: ChildProcess): void {
@@ -16,10 +16,9 @@ function stop(child: ChildProcess): void {
 
 extendMatchers();
 
-// GIT_DEDUP_BIN runs this suite against a native binary instead of the Node CLI.
-const bin = fileURLToPath(new URL('../dist/bin.js', import.meta.url));
+// Through the npm launcher, which runs the native binary for this platform.
 const cli = commandLine({
-  command: process.env.GIT_DEDUP_BIN ? [process.env.GIT_DEDUP_BIN] : ['node', bin],
+  command: ['node', launcher],
   name: 'git-dedup',
 });
 const dirs: string[] = [];
@@ -436,7 +435,8 @@ it.skipIf(process.platform === 'win32')('intercepts Actions-style fetches throug
   const env = isolatedEnv(dir);
   const shimDir = join(dir, 'shim');
   await mkdir(shimDir);
-  await symlink(process.env.GIT_DEDUP_BIN ?? bin, join(shimDir, 'git'));
+  // The shim points at the launcher, which git-dedup must recognize as itself rather than as Git.
+  await symlink(launcher, join(shimDir, 'git'));
   env.PATH = `${shimDir}:${env.PATH}`;
   const run = (args: string[]) =>
     execFileSync('git', args, { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();

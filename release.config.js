@@ -1,9 +1,10 @@
 import { execFileSync } from 'node:child_process';
 import { mkdirSync } from 'node:fs';
 import { resolve } from 'node:path';
+import { buildNative } from './scripts/build-native.mjs';
 
-// Publish dependencies first. pnpm resolves workspace:* to a concrete range.
-export const releasePackages = ['packages/core', 'packages/cli'];
+// The npm package: a launcher plus the native binary for every supported platform.
+export const releasePackages = ['packages/cli'];
 
 export default {
   branches: ['main'],
@@ -14,7 +15,9 @@ export default {
     ['@semantic-release/release-notes-generator', { preset: 'conventionalcommits' }],
     ...releasePackages.map((path) => ['@anolilab/semantic-release-pnpm', { pkgRoot: path }]),
     {
-      prepare: () => {
+      // Runs before any publish step, so npm receives binaries that report the released version.
+      prepare: (_config, { nextRelease }) => {
+        buildNative({ all: true, version: nextRelease.version });
         const tarballDir = resolve('release-artifacts');
         mkdirSync(tarballDir, { recursive: true });
         for (const path of releasePackages) {

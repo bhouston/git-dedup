@@ -7,7 +7,7 @@ await mkdir(new URL('.', output), { recursive: true });
 execFileSync(
   process.execPath,
   [
-    fileURLToPath(new URL('../packages/cli/dist/bin.js', import.meta.url)),
+    fileURLToPath(new URL('../packages/cli/bin/git-dedup.js', import.meta.url)),
     'docgen',
     '--format',
     'json',

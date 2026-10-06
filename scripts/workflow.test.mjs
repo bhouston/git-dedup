@@ -24,7 +24,7 @@ for (const [message, expected] of [
 
 test('release branch and publication order', () => {
   assert.deepEqual(releaseConfig.branches, ['main']);
-  assert.deepEqual(releasePackages, ['packages/core', 'packages/cli']);
+  assert.deepEqual(releasePackages, ['packages/cli']);
   const published = releaseConfig.plugins
     .filter((plugin) => Array.isArray(plugin) && plugin[0] === '@anolilab/semantic-release-pnpm')
     .map(([, options]) => options.pkgRoot);
@@ -40,6 +40,14 @@ test('release is manual and runs CI before publishing', () => {
   assert.match(workflow, /uses: \.\/\.github\/workflows\/ci\.yml/);
   assert.match(workflow, /id-token: write/);
   assert.match(workflow, /pnpm release/);
+  // Native archives and Linux packages join the GitHub Release that semantic-release created.
+  assert.match(workflow, /goreleaser\/goreleaser-action/);
+  assert.match(workflow, /setup-go/);
+});
+
+test('the npm package builds every native target with the released version', () => {
+  const prepare = releaseConfig.plugins.find((plugin) => typeof plugin === 'object' && !Array.isArray(plugin)).prepare;
+  assert.match(String(prepare), /buildNative\(\{ all: true, version: nextRelease\.version \}\)/);
 });
 
 test('PR policy requires main and a linked issue', () => {

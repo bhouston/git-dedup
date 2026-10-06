@@ -5,7 +5,7 @@ import { chmod, mkdir, mkdtemp, readFile, realpath, rm, stat, writeFile } from '
 import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { delimiter, dirname, join, sep } from 'node:path';
-import { createGitDedup, keyForRemote, nativeBinary } from './native.js';
+import { createGitDedup, keyForRemote, nativeBinary, waitForPort } from './native.js';
 
 /** Stops a spawned process. On Windows, `git daemon` runs as a child of git.exe, so stop the whole tree. */
 function stop(child: ChildProcess): void {
@@ -94,7 +94,7 @@ async function fixture() {
       { stdio: 'ignore' },
     ),
   );
-  await new Promise((resolve) => setTimeout(resolve, 150));
+  await waitForPort(port);
   return { root, source, remote: `git://127.0.0.1:${port}/team/project.git`, store: join(root, 'store') };
 }
 
@@ -229,7 +229,7 @@ it('reports a missing, invalid, or self-referencing Git executable', async () =>
     empty: true,
     checks: [{ name: 'git', ok: false, detail: 'Real Git executable not found on PATH' }],
   });
-  const own = createGitDedup({ cwd: root, gitPath: nativeBinary ?? process.argv[1]!, env: testEnv(root, store) });
+  const own = createGitDedup({ cwd: root, gitPath: nativeBinary, env: testEnv(root, store) });
   await expect(own.gitPath()).rejects.toThrow('must point to a real Git executable');
   const missing = createGitDedup({ cwd: root, gitPath: join(root, 'nope'), env: testEnv(root, store) });
   await expect(missing.gitPath()).rejects.toThrow('must point to a real Git executable');
@@ -300,8 +300,7 @@ it('rejects an invalid pool in doctor, and invalid registrations in list and pru
   await expect(api.listRemotes()).rejects.toThrow('Invalid git-dedup remote registration: bad.json');
   await rm(remotes, { recursive: true });
   await writeFile(remotes, 'not a directory');
-  if (nativeBinary) await expect(api.listRemotes()).rejects.toThrow(/remotes/);
-  else await expect(api.listRemotes()).rejects.toMatchObject({ code: 'ENOTDIR' });
+  await expect(api.listRemotes()).rejects.toThrow(/remotes/);
 });
 
 it('prunes with an empty index tree and refreshes the lock heartbeat', async () => {

@@ -1,10 +1,14 @@
 import assert from 'node:assert/strict';
-import { spawn, execFileSync } from 'node:child_process';
+import { spawn, execFile, execFileSync } from 'node:child_process';
 import { mkdtemp, mkdir, writeFile, readFile, readdir, realpath, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, normalize } from 'node:path';
 import { createServer } from 'node:net';
-import { createGitDedup } from '../packages/core/dist/index.js';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+
+// Through the npm launcher, as users run it; `pnpm build` places the native binary it starts.
+const launcher = fileURLToPath(new URL('../packages/cli/bin/git-dedup.js', import.meta.url));
 
 // A reproducible, offline proof using two real remotes over loopback Git transport.
 const root = await realpath(await mkdtemp(join(tmpdir(), 'git-dedup-proof-')));
@@ -67,17 +71,18 @@ try {
       }
     });
   });
-  const api = createGitDedup({ cwd: root, env });
+  const dedup = async (...args) =>
+    (await promisify(execFile)(process.execPath, [launcher, ...args], { cwd: root, env })).stdout.trim();
   const clones = ['alpha-one', 'alpha-two', 'beta-one'];
   await Promise.all(
     clones.map(async (name) => {
       const remote = name.split('-')[0];
-      assert.equal(await api.run(['clone', `git://127.0.0.1:${port}/team/${remote}`, join(root, name)]), 0);
+      await dedup('clone', '-q', `git://127.0.0.1:${port}/team/${remote}`, join(root, name));
     }),
   );
   const pool = join(store, 'pool.git');
   const poolObjects = join(pool, 'objects');
-  assert.deepEqual(await api.gc(), { compacted: true });
+  assert.equal(await dedup('store', 'gc'), 'Compacted the shared object pool.');
   const poolPacks = (await readdir(join(poolObjects, 'pack'))).filter((name) => name.endsWith('.pack'));
   assert.ok(poolPacks.length > 0, 'shared pool has pack files');
   for (const name of clones) {
@@ -91,9 +96,10 @@ try {
     git(consumer, 'gc');
     git(consumer, 'fsck', '--full');
   }
-  const info = await api.storeInfo();
-  assert.equal(info.remoteCount, 2);
-  assert.deepEqual(await api.gc(), { compacted: true });
+  const [storePath, remoteLine, sizeLine] = (await dedup('store')).split('\n');
+  assert.equal(remoteLine, 'Remotes: 2');
+  const info = { path: storePath, size: sizeLine.replace('Size: ', '') };
+  assert.equal(await dedup('store', 'gc'), 'Compacted the shared object pool.');
   for (const name of clones) {
     git(join(root, name), 'fsck', '--full');
     assert.equal(git(join(root, name), 'rev-list', '--count', 'HEAD'), '3');

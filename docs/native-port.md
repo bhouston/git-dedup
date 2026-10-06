@@ -1,19 +1,21 @@
-# Native port
+# Native implementation
 
-git-dedup is being ported from Node.js to a native Go binary, so it can ship through Homebrew, apt/dnf/apk, winget, and Scoop without a runtime. The Go code lives at the repository root (`go.mod`, `cmd/git-dedup`, `internal/`). Once it reaches parity on every OS, the npm package will ship the Go binaries and the TypeScript implementation will be retired.
+git-dedup is a Go program. Through version 2, it was written in TypeScript (`git-dedup-core` and the `git-dedup` npm CLI); the Go port replaced it so it can ship as a native binary through npm, GitHub Releases, Linux packages, Homebrew, Scoop, and winget without a runtime.
 
 ## Layout
 
-| Path                | Contents                                                                         | TypeScript origin              |
-| ------------------- | -------------------------------------------------------------------------------- | ------------------------------ |
-| `cmd/git-dedup`     | Entry point; `main.version` is set at build time                                 | `packages/cli/src/bin.ts`      |
-| `internal/core`     | Store, lock, pool, clone, submodule, worktree, add, remove, prune                | `packages/core/src/index.ts`   |
-| `internal/discover` | Checkout discovery for `store add --all`                                         | `packages/cli/src/discover.ts` |
-| `internal/cli`      | Command tree (urfave/cli v3), `docgen` (OpenCLI from that tree), stats, test API | `packages/cli/src/`            |
+| Path                | Contents                                                                         |
+| ------------------- | -------------------------------------------------------------------------------- |
+| `cmd/git-dedup`     | Entry point; `main.version` is set at build time                                 |
+| `internal/core`     | Store, lock, pool, clone, fetch, submodule, worktree, add, remove, prune         |
+| `internal/discover` | Checkout discovery for `store add --all`                                         |
+| `internal/cli`      | Command tree (urfave/cli v3), `docgen` (OpenCLI from that tree), stats, test API |
+| `packages/cli`      | The npm package: `bin/git-dedup.js` runs `native/<platform>-<arch>/git-dedup`    |
+| `test`              | Behavior suites that drive the binary                                            |
 
-## The contract: what both implementations must agree on
+## Store compatibility contract
 
-The Node and Go versions must be able to share one store, and a user may run either against the same checkouts. Everything below is a compatibility contract; changing it needs a migration.
+Stores and checkouts created by any git-dedup version, including the TypeScript 2.x releases, must keep working, and different versions may share one store. Everything below is a compatibility contract; changing it needs a migration.
 
 **Store location.** `$GIT_DEDUP_STORE`, else `$GITX_STORE` (relative to the working directory, `~` expanded), else a legacy `~/.cache/gitx` or `~/.gitx` that holds a valid marker, else `~/.git-dedup`. The path is canonicalized (symlinks and Windows 8.3 names resolved).
 
@@ -50,16 +52,17 @@ Only git-dedup's own commands go through [urfave/cli v3](https://github.com/urfa
 
 ## Testing
 
-The TypeScript suites are the parity gate. `pnpm test:native` builds the Go binary into `build/native/` and runs `packages/core/test/*` plus the CLI and discovery tests against it:
-
-- `packages/cli/src/cli.test.ts` runs the binary directly when `GIT_DEDUP_BIN` is set.
-- The core and discovery suites call the library API. `packages/core/test/native.ts` maps that API onto the binary's test-only `__api` command, which only exists when `GIT_DEDUP_TEST_API` names a result file; without it, `__api` is an ordinary unknown Git command.
-- `pnpm test:native --coverage` builds with Go coverage instrumentation and writes `coverage/native.out`.
+- `pnpm test` builds the binary for this machine and runs the Vitest suites in `test/` against it.
+- `test/cli.test.ts` runs the CLI through the npm launcher, as users do.
+- The other suites call storage operations directly through `test/native.ts`, which drives the binary's test-only `__api` command. That command only exists when `GIT_DEDUP_TEST_API` names a result file; without it, `__api` is an ordinary unknown Git command.
+- `pnpm test:coverage` uses a coverage-instrumented binary and writes `coverage/native.out`.
 - `go test ./...` covers the command line, URL keys, formatting, and docgen (checked with opencli's validator) without Node.
 
-Two lock tests mock Node's timers and clock and are skipped for the native binary. `handlers.test.ts` and `inprocess.test.ts` test the Node CLI's internals and stay with the Node suite.
+## npm launcher
 
-## Intentional differences
+`packages/cli/bin/git-dedup.js` starts the binary for `process.platform` and `process.arch` with inherited stdio, and exits with its status. It sets `GIT_DEDUP_LAUNCHER` to its own path, so a `git` shim that points at the launcher is recognized as git-dedup rather than run as Git. The package ships all six binaries (about 10 MB packed); per-platform optional dependencies would make installs smaller if that becomes a concern.
+
+## Differences from the TypeScript CLI (2.x)
 
 - An error from a store command prints `Error: <message>` and exits 1. The Node CLI printed the command's help followed by a stack trace.
 - Help text comes from urfave/cli instead of matching yargs. A usage mistake (unknown command or flag, missing argument, or invalid `--format`) prints `Incorrect Usage: <problem>` and the command's help to stderr and exits 1, with urfave/cli's wording.
@@ -68,12 +71,5 @@ Two lock tests mock Node's timers and clock and are skipped for the native binar
 - The OpenCLI document also lists `--help` and `--version` as global flags, gives every argument a `type`, and does not mark `git-dedup store` as a group, because it runs the store health check itself. `docgen --format yaml` quotes some strings differently. The YAML parses to the same document.
 - `store add --all` sorts discovered paths case-insensitively, which is close to, but not identical to, JavaScript's `localeCompare`.
 - Errors from the operating system read differently (for example, Go reports `is a directory` where Node reports `EISDIR`).
-
-## Status
-
-- [x] Port of every command, including `fetch` from #144, with byte-compatible store files.
-- [x] Shared suites pass against the binary on Linux x64/arm64, macOS, and Windows, and block CI.
-- [x] GoReleaser config: 6 targets, archives, deb/rpm/apk/Arch packages, Homebrew cask, Scoop, winget, SBOMs, macOS notarization, Windows signing hook.
-- [x] CI: native suites on Linux x64/arm64, macOS, and Windows, plus package install checks in Debian, Ubuntu, Fedora, and Alpine.
-- [ ] Publishing: create the tap, Scoop bucket, winget-pkgs fork, apt/rpm repository, and signing credentials (see [RELEASING.md](../RELEASING.md)), then run GoReleaser from the release workflow.
-- [ ] npm: ship the Go binaries through per-platform optional dependencies and retire `packages/core`.
+- The `git-dedup-core` library API is gone; scripts run the `git-dedup` command.
+- The npm package needs Node.js 18 or later rather than 22, only to start the launcher.
