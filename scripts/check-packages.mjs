@@ -14,6 +14,9 @@ const pnpm = (args) =>
   windows
     ? execSync(['pnpm', ...args.map((arg) => `"${arg}"`)].join(' '), { stdio: 'pipe' })
     : execFileSync('pnpm', args, { stdio: 'pipe' });
+// Passwordless sudo (as on CI runners) lets the check give binaries to root, like a `sudo npm install -g`.
+const sudo = (args) => execFileSync('sudo', ['-n', ...args], { stdio: 'pipe' });
+let rootOwned;
 
 try {
   buildNative({ all: true });
@@ -52,27 +55,29 @@ try {
   const version = run(temp);
   assert.match(version, versionLine);
 
-  // npm packers drop executable bits, and a root-owned global install cannot restore them. The launcher must
-  // then run a cached executable copy. Simulate that with binaries that are neither executable nor writable.
+  // npm packers drop executable bits. The launcher must restore them, or, in an install this user cannot change,
+  // run a cached executable copy.
   if (!windows) {
-    const readOnly = join(temp, 'read-only');
+    const installed = join(temp, 'installed');
     const cache = join(temp, 'cache');
-    mkdirSync(readOnly);
-    tar(['-xzf', join('..', archive)], readOnly);
-    const native = join(readOnly, 'package', 'native');
-    for (const target of readdirSync(native)) {
-      chmodSync(join(native, target, readdirSync(join(native, target))[0]), 0o444);
-      chmodSync(join(native, target), 0o555);
+    mkdirSync(installed);
+    tar(['-xzf', join('..', archive)], installed);
+    const native = join(installed, 'package', 'native');
+    for (const target of readdirSync(native))
+      for (const name of readdirSync(join(native, target))) chmodSync(join(native, target, name), 0o644);
+    try {
+      sudo(['chown', '-R', '0', native]);
+      rootOwned = native;
+    } catch {
+      console.log('package check: no passwordless sudo; checking only the chmod repair');
     }
-    assert.match(run(readOnly, { ...process.env, XDG_CACHE_HOME: cache }), versionLine);
-    // Root may chmod anything, so only an unprivileged run needs the cached copy.
-    if (process.getuid?.() !== 0) {
-      const copy = join(cache, 'git-dedup', manifest.version, `${process.platform}-${process.arch}`, 'git-dedup');
-      assert.ok(existsSync(copy), `launcher did not cache an executable copy at ${copy}`);
-    }
-    for (const target of readdirSync(native)) chmodSync(join(native, target), 0o755);
+    assert.match(run(installed, { ...process.env, XDG_CACHE_HOME: cache }), versionLine);
+    const copy = join(cache, 'git-dedup', manifest.version, `${process.platform}-${process.arch}`, 'git-dedup');
+    if (rootOwned) assert.ok(existsSync(copy), `launcher did not cache an executable copy at ${copy}`);
+    else assert.ok(!existsSync(copy), 'launcher copied a binary it could mark executable');
   }
   console.log(`${manifest.name}@${manifest.version}: ${files.length} packed files; launcher ran: ${version.trim()}`);
 } finally {
+  if (rootOwned) sudo(['chown', '-R', String(process.getuid()), rootOwned]);
   rmSync(resolve(temp), { recursive: true, force: true });
 }
