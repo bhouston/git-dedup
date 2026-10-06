@@ -241,6 +241,32 @@ it.skipIf(nativeBinary)('reaps a lock whose heartbeat stopped even when its owne
   await expect(stat(lock)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
+it('keeps one pool consistent under concurrent clones, adoption, and prune', async () => {
+  const { root, source, remote, store } = await fixture();
+  git(['remote', 'set-url', 'origin', remote], source);
+  // Separate clients contend for the store lock; with the native binary each is its own process.
+  const client = () => createGitDedup({ cwd: root, env: testEnv(root, store) });
+  const clones = Array.from({ length: 6 }, (_, i) => `clone-${i}`);
+  const results = await Promise.all([
+    ...clones.map((name) => client().run(['clone', '-q', remote, name])),
+    client().add(source, true),
+  ]);
+  expect(results.slice(0, clones.length)).toEqual(clones.map(() => 0));
+  expect(results.at(-1)).toMatchObject({ added: 1, failed: 0 });
+  const api = client();
+  expect(await api.prune()).toMatchObject({});
+  for (const name of [...clones, 'source']) {
+    const checkout = join(root, name);
+    await expectAlternate(store, join(checkout, '.git'));
+    git(['fsck', '--full'], checkout);
+  }
+  git(['fsck', '--full'], join(store, 'pool.git'));
+  expect((await api.storeInfo()).remoteCount).toBe(1);
+  // Every checkout is registered, so none is left holding objects that prune could reclaim.
+  expect(await readdir(join(store, 'consumers'))).toHaveLength(clones.length + 1);
+  expect(await readdir(join(store, 'clones')).catch(() => [])).toEqual([]);
+});
+
 it('clones twice into one pool and makes both consumers depend on it', async () => {
   const { root, remote, store } = await fixture();
   const api = createGitDedup({ cwd: root, env: testEnv(root, store) });

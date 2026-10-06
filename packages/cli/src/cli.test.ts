@@ -436,7 +436,7 @@ it.skipIf(process.platform === 'win32')('intercepts Actions-style fetches throug
   const env = isolatedEnv(dir);
   const shimDir = join(dir, 'shim');
   await mkdir(shimDir);
-  await symlink(bin, join(shimDir, 'git'));
+  await symlink(process.env.GIT_DEDUP_BIN ?? bin, join(shimDir, 'git'));
   env.PATH = `${shimDir}:${env.PATH}`;
   const run = (args: string[]) =>
     execFileSync('git', args, { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
