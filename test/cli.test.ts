@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, realpath, rm, symlink, readFile, readdir } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, realpath, rm, symlink, readFile, readdir, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -470,4 +470,30 @@ it.skipIf(process.platform === 'win32')('intercepts Actions-style fetches throug
   });
   expect(stats).toSucceed();
   expect(stats).toHaveStderr('reused object pool');
+});
+
+// Windows cannot start a shell-script Git wrapper; Linux and macOS cover the wrapper-based tests.
+it.skipIf(process.platform === 'win32')('lets Git prompt for credentials while filling the object pool', async () => {
+  const { dir, remote } = await gitRemoteFixture();
+  const env = isolatedEnv(dir);
+  // Stands in for an ssh passphrase or credential prompt, which needs the caller's stdin like plain Git.
+  const wrapper = join(dir, 'git-wrapper');
+  await writeFile(
+    wrapper,
+    `#!/bin/sh
+case " $* " in *" fetch "*) IFS= read -r answer; printf '%s\n' "$answer" >> "${dir}/answers";; esac
+exec git "$@"
+`,
+    { mode: 0o755 },
+  );
+  await writeFile(env.GIT_CONFIG_GLOBAL!, `[git-dedup]\n gitPath = ${wrapper}\n`);
+  const clone = spawnSync('node', [launcher, 'clone', remote, 'consumer'], {
+    cwd: dir,
+    env,
+    input: 'passphrase\n',
+    encoding: 'utf8',
+  });
+  expect(clone.stderr).not.toContain('object pool unavailable');
+  expect(clone.status).toBe(0);
+  expect(await readFile(join(dir, 'answers'), 'utf8')).toBe('passphrase\n');
 });
