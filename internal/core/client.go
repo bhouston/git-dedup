@@ -257,6 +257,10 @@ func (c *Client) git(args []string, at string, mode stdioMode, input *string) (g
 	} else {
 		if input != nil {
 			command.Stdin = strings.NewReader(*input)
+		} else if file, ok := c.stdin.(*os.File); ok {
+			// Like plain Git, so ssh, credential helpers, and askpass can prompt. Only a file passes
+			// through: Go would copy any other reader, consuming input meant for a later command.
+			command.Stdin = file
 		}
 		command.Stdout = &stdout
 		command.Stderr = &stderr
