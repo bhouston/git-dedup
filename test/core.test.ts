@@ -1607,6 +1607,19 @@ it('shares full history across two Actions-style init/fetch checkouts and preser
   git(['fsck', '--full'], join(root, 'actions-1'));
 });
 
+it('seeds the pool from an unlinked checkout before fetching from the remote', async () => {
+  const { root, source, remote, store } = await fixture();
+  const checkout = join(root, 'plain');
+  git(['clone', '-q', remote, checkout], root);
+  // The remote can no longer serve full history, so only a fetch that negotiates with the checkout's objects succeeds.
+  const blob = git(['rev-parse', 'HEAD:hello.txt'], source);
+  await rm(join(root, 'remote', 'team', 'project.git', 'objects', blob.slice(0, 2), blob.slice(2)));
+  const api = createGitDedup({ cwd: checkout, env: testEnv(root, store) });
+  expect(await api.run(['fetch', '-q', 'origin'])).toBe(0);
+  await expectAlternate(store, join(checkout, '.git'));
+  git(['fsck', '--connectivity-only'], checkout);
+});
+
 it.each([['--depth=1'], ['--deepen', '10'], ['--unshallow'], ['--filter=blob:none'], ['--filter=tree:0']])(
   'upgrades existing shallow fetches with %j and tolerates deepen/unshallow on full history',
   async (...flags) => {
