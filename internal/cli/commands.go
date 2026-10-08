@@ -34,7 +34,7 @@ func (a *app) command() *cli.Command {
 	root := &cli.Command{
 		Name:  "git-dedup",
 		Usage: description,
-		Description: "Git commands pass through to Git; clone, fetch, submodule, and worktree can use\n" +
+		Description: "Git commands pass through to Git; clone, submodule, and worktree can use\n" +
 			"the shared store.",
 		HideVersion: true,
 		Flags: []cli.Flag{

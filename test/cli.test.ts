@@ -1,4 +1,4 @@
-import { access, mkdir, mkdtemp, realpath, rm, symlink, readFile, readdir, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, realpath, rm, symlink, readFile, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync, spawn, spawnSync, type ChildProcess } from 'node:child_process';
@@ -430,7 +430,7 @@ describe('git-dedup CLI', () => {
   });
 });
 
-it.skipIf(process.platform === 'win32')('intercepts Actions-style fetches through a git PATH shim', async () => {
+it.skipIf(process.platform === 'win32')('intercepts clones through a git PATH shim', async () => {
   const { dir, remote } = await gitRemoteFixture();
   const env = isolatedEnv(dir);
   const shimDir = join(dir, 'shim');
@@ -438,38 +438,11 @@ it.skipIf(process.platform === 'win32')('intercepts Actions-style fetches throug
   // The shim points at the launcher, which git-dedup must recognize as itself rather than as Git.
   await symlink(launcher, join(shimDir, 'git'));
   env.PATH = `${shimDir}:${env.PATH}`;
-  const run = (args: string[]) =>
-    execFileSync('git', args, { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  for (const name of ['first', 'second']) {
-    const repo = join(dir, name);
-    run(['init', repo]);
-    run(['-C', repo, 'remote', 'add', 'origin', remote]);
-    run([
-      '-C',
-      repo,
-      '-c',
-      'protocol.version=2',
-      'fetch',
-      '--no-tags',
-      '--prune',
-      '--no-recurse-submodules',
-      '--depth=1',
-      'origin',
-      '+refs/heads/main:refs/remotes/origin/main',
-    ]);
-    run(['-C', repo, 'checkout', '--detach', 'FETCH_HEAD']);
-    expect(run(['-C', repo, 'rev-parse', '--is-shallow-repository'])).toBe('false');
-    expect((await readFile(join(repo, '.git', 'objects', 'info', 'alternates'), 'utf8')).trim()).toBe(
-      join(dir, 'store', 'pool.git', 'objects'),
-    );
-    expect(await readdir(join(repo, '.git', 'objects', 'pack'))).toEqual([]);
-  }
-  const stats = await cli.run(['--stats', '-C', join(dir, 'second'), 'fetch', '--depth=1', 'origin'], {
-    cwd: dir,
-    env,
-  });
-  expect(stats).toSucceed();
-  expect(stats).toHaveStderr('reused object pool');
+  const repo = join(dir, 'shimmed');
+  execFileSync('git', ['clone', '-q', remote, repo], { cwd: dir, env, stdio: 'ignore' });
+  expect((await readFile(join(repo, '.git', 'objects', 'info', 'alternates'), 'utf8')).trim()).toBe(
+    join(dir, 'store', 'pool.git', 'objects'),
+  );
 });
 
 // Windows cannot start a shell-script Git wrapper; Linux and macOS cover the wrapper-based tests.

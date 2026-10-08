@@ -1,6 +1,6 @@
 # Native implementation
 
-git-dedup is a Go program. Through version 2, it was written in TypeScript (`git-dedup-core` and the `git-dedup` npm CLI); the Go port replaced it so it can ship as a native binary through npm, GitHub Releases, Linux packages, Homebrew, Scoop, and winget without a runtime.
+git-dedup is a Go program, so it can ship as a native binary through npm, GitHub Releases, Linux packages, Homebrew, Scoop, and winget without a runtime.
 
 ## Layout
 
@@ -71,5 +71,4 @@ Only git-dedup's own commands go through [urfave/cli v3](https://github.com/urfa
 - The OpenCLI document also lists `--help` and `--version` as global flags, gives every argument a `type`, and does not mark `git-dedup store` as a group, because it runs the store health check itself. `docgen --format yaml` quotes some strings differently. The YAML parses to the same document.
 - `store add --all` sorts discovered paths case-insensitively, which is close to, but not identical to, JavaScript's `localeCompare`.
 - Errors from the operating system read differently (for example, Go reports `is a directory` where Node reports `EISDIR`).
-- The `git-dedup-core` library API is gone; scripts run the `git-dedup` command.
 - The npm package needs Node.js 18 or later rather than 22, only to start the launcher.

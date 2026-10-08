@@ -46,7 +46,7 @@ Stop Git commands in linked checkouts before pruning. Like `git gc --prune=now`,
 
 Prune refuses to run when it cannot prove that pruning is safe:
 
-- The pool holds pins for checkouts that are not registered, such as checkouts adopted by an older version. Run `git-dedup store add <path>` for each checkout that uses the store, or `git-dedup store add --all <directory>`, then retry.
+- The pool holds pins for checkouts that are not registered. Run `git-dedup store add <path>` for each checkout that uses the store, or `git-dedup store add --all <directory>`, then retry.
 - A `git-dedup clone` is still running, or one stopped before registering its checkout. Retry when the clone finishes, or run `git-dedup store add` on the checkout it left.
 - A checkout's index cannot be recorded, for example because of unresolved merge conflicts or a running Git command.
 - A checkout uses a ref storage format other than files.

@@ -334,7 +334,7 @@ func (c *Client) Run(args []string) (int, error) {
 	if lookupEnv(c.incomingEnv, "GITX_ACTIVE") == "1" || lookupEnv(c.incomingEnv, "GIT_DEDUP_ACTIVE") == "1" || !ok {
 		return c.passthrough(args, c.cwd)
 	}
-	managed := parsed.command == "clone" || parsed.command == "fetch" ||
+	managed := parsed.command == "clone" ||
 		(parsed.command == "submodule" && len(parsed.rest) > 0 && (parsed.rest[0] == "add" || parsed.rest[0] == "update")) ||
 		(parsed.command == "worktree" && len(parsed.rest) > 0 && parsed.rest[0] == "add")
 	if c.hasRepositoryEnvironment() {
@@ -342,36 +342,6 @@ func (c *Client) Run(args []string) (int, error) {
 			c.fallback(parsed.rest, "Git repository environment variables are set")
 		}
 		return c.passthrough(args, c.cwd)
-	}
-	// Actions supplies per-command configuration (including authentication).
-	// Carry it into every underlying Git call rather than dropping it on the pool fetch.
-	if parsed.command == "fetch" {
-		var settings [][2]string
-		var remaining []string
-		for i := 0; i < len(parsed.prefix); i++ {
-			arg := parsed.prefix[i]
-			if strings.HasPrefix(arg, "-c") {
-				setting := arg[2:]
-				if arg == "-c" {
-					i++
-					setting = parsed.prefix[i]
-				}
-				settings = append(settings, configSetting(setting))
-				continue
-			}
-			remaining = append(remaining, arg)
-			if slices.Contains([]string{"-C", "--git-dir", "--work-tree", "--namespace", "--config-env"}, arg) {
-				i++
-				remaining = append(remaining, parsed.prefix[i])
-			}
-		}
-		if len(settings) > 0 {
-			options := c.options
-			options.Env = withConfig(c.incomingEnv, settings)
-			child := New(options)
-			child.stderr, child.stdout, child.stdin = c.stderr, c.stdout, c.stdin
-			return child.Run(append(append(remaining, "fetch"), parsed.rest...))
-		}
 	}
 	// -C is resolved explicitly. Other global options can change Git semantics, so forward intact.
 	for i := 0; i < len(parsed.prefix); i++ {
@@ -398,11 +368,6 @@ func (c *Client) Run(args []string) (int, error) {
 	switch parsed.command {
 	case "clone":
 		code, handled, err := c.clone(parsed.rest, parsed.cwd)
-		if err != nil || handled {
-			return code, err
-		}
-	case "fetch":
-		code, handled, err := c.fetchCheckout(parsed.rest)
 		if err != nil || handled {
 			return code, err
 		}

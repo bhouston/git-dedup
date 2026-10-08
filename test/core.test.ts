@@ -2,20 +2,7 @@ import { afterEach, expect, it, vi } from 'vitest';
 import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 import { createHash, randomBytes } from 'node:crypto';
 import { createServer } from 'node:net';
-import {
-  chmod,
-  cp,
-  mkdtemp,
-  mkdir,
-  readFile,
-  readdir,
-  realpath,
-  rename,
-  rm,
-  stat,
-  utimes,
-  writeFile,
-} from 'node:fs/promises';
+import { cp, mkdtemp, mkdir, readFile, readdir, realpath, rename, rm, stat, utimes, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, normalize, sep } from 'node:path';
 import { createGitDedup, keyForRemote, type StorageReport, waitForPort } from './native.js';
@@ -717,9 +704,7 @@ it('reports each fallback to plain Git once unless quiet', async () => {
   const messages = () => output.mock.calls.map(([message]) => String(message)).filter((m) => m.includes('plain Git'));
   try {
     expect(await api.run(['clone', '--shallow-since', '2000-01-01', remote, 'shallow'])).toBe(0);
-    expect(messages()).toEqual([
-      'git-dedup: clone history window, filter, or missing option value is not supported; using plain Git\n',
-    ]);
+    expect(messages()).toEqual(['git-dedup: clone option --shallow-since is not supported; using plain Git\n']);
     output.mockClear();
     expect(await api.run(['clone', '-q', '--shallow-since=2000-01-01', remote, 'quiet'])).toBe(0);
     expect(await api.run(['-C', 'shallow', 'status', '--short'])).toBe(0);
@@ -1482,46 +1467,29 @@ async function historyFixture() {
   return fixtureData;
 }
 
-it('upgrades every depth, single branch and supported filter to full pool-backed clones', async () => {
-  const { root, remote, store } = await historyFixture();
-  const reports: StorageReport[] = [];
-  const api = createGitDedup({ cwd: root, env: testEnv(root, store), onStorageReport: (r) => reports.push(r) });
-  const requests = [
-    ['--depth', '1'],
-    ['--depth=10'],
-    ['--depth', '50'],
-    ['--single-branch'],
-    ['--filter=blob:none'],
-    ['--filter', 'tree:0'],
-  ];
-  let history: string | undefined;
-  for (const [i, flags] of requests.entries()) {
-    const repo = join(root, `clone-${i}`);
-    expect(await api.run(['clone', '-q', ...flags, remote, repo])).toBe(0);
-    await expectAlternate(store, join(repo, '.git'));
-    expect(git(['rev-parse', '--is-shallow-repository'], repo)).toBe('false');
-    const actual = git(['rev-list', 'HEAD'], repo);
-    expect(actual.split('\n')).toHaveLength(3);
-    history ??= actual;
-    expect(actual).toBe(history);
-    expect(git(['rev-parse', 'origin/other'], repo)).toBe(git(['rev-parse', 'HEAD'], repo));
-    expect(git(['config', '--get-regexp', '^remote\\..*\\.fetch$'], repo)).toContain('refs/heads/*');
-    expect(await readdir(join(repo, '.git', 'objects', 'pack'))).toEqual([]);
-    git(['fsck', '--full'], repo);
-  }
-  expect(reports.map((r) => r.poolReused)).toEqual([false, true, true, true, true, true]);
-});
+it.each([['--depth=1'], ['--depth', '1'], ['--single-branch'], ['--filter=blob:none'], ['--filter', 'tree:0']])(
+  'leaves a narrow clone with %j to plain Git without creating a pool',
+  async (...flags) => {
+    const { root, remote, store } = await historyFixture();
+    const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
+    expect(await api.run(['clone', '-q', ...flags, remote, 'narrow'])).toBe(0);
+    const repo = join(root, 'narrow');
+    await expect(stat(join(repo, '.git', 'objects', 'info', 'alternates'))).rejects.toMatchObject({ code: 'ENOENT' });
+    if (flags[0]?.startsWith('--depth')) expect(git(['rev-parse', '--is-shallow-repository'], repo)).toBe('true');
+    await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
+  },
+);
 
-it('preserves sparse working trees when upgrading depth and filters', async () => {
+it('passes fetch through to Git without touching the store', async () => {
   const { root, remote, store } = await historyFixture();
-  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  expect(await api.run(['clone', '-q', '--sparse', '--depth=1', '--filter=blob:none', remote, 'sparse'])).toBe(0);
-  const repo = join(root, 'sparse');
-  await expectAlternate(store, join(repo, '.git'));
-  expect(git(['rev-list', '--count', 'HEAD'], repo)).toBe('3');
-  await expect(stat(join(repo, 'nested', 'file.txt'))).rejects.toMatchObject({ code: 'ENOENT' });
-  expect(await api.run(['-C', repo, 'sparse-checkout', 'set', 'nested'])).toBe(0);
-  expect(await readFile(join(repo, 'nested', 'file.txt'), 'utf8')).toBe('nested\n');
+  const repo = join(root, 'shallow');
+  git(['clone', '-q', '--depth=1', remote, repo], root);
+  const api = createGitDedup({ cwd: repo, env: testEnv(root, store) });
+  expect(await api.run(['fetch', '-q', '--depth=1', 'origin'])).toBe(0);
+  expect(await api.run(['fetch', '-q', 'origin'])).toBe(0);
+  expect(git(['rev-parse', '--is-shallow-repository'], repo)).toBe('true');
+  await expect(stat(join(repo, '.git', 'objects', 'info', 'alternates'))).rejects.toMatchObject({ code: 'ENOENT' });
+  await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
 });
 
 it.each(['clone', 'fetch'])('preserves history-window semantics for %s without creating a pool', async (command) => {
@@ -1565,128 +1533,4 @@ it.each(['clone', 'fetch'])('preserves history-window semantics for %s without c
     expect(git(['rev-list', '--count', 'HEAD'], repo)).toBe('1');
   }
   await expect(stat(store)).rejects.toMatchObject({ code: 'ENOENT' });
-});
-
-it('shares full history across two Actions-style init/fetch checkouts and preserves refspecs', async () => {
-  const { root, source, remote, store } = await historyFixture();
-  const reports: StorageReport[] = [];
-  const tip = git(['rev-parse', 'HEAD'], source);
-  const api = createGitDedup({ cwd: root, env: testEnv(root, store), onStorageReport: (r) => reports.push(r) });
-  for (let i = 0; i < 2; i++) {
-    const repo = join(root, `actions-${i}`);
-    expect(await api.run(['init', repo])).toBe(0);
-    expect(await api.run(['-C', repo, 'remote', 'add', 'origin', remote])).toBe(0);
-    expect(
-      await api.run([
-        '-C',
-        repo,
-        '-c',
-        'protocol.version=2',
-        'fetch',
-        '--no-tags',
-        '--prune',
-        '--no-recurse-submodules',
-        '--depth=1',
-        'origin',
-        `+${tip}:refs/remotes/origin/main`,
-      ]),
-    ).toBe(0);
-    expect(await api.run(['-C', repo, 'checkout', '--detach', 'FETCH_HEAD'])).toBe(0);
-    await expectAlternate(store, join(repo, '.git'));
-    expect(git(['rev-list', '--count', 'HEAD'], repo)).toBe('3');
-    expect(git(['rev-parse', '--is-shallow-repository'], repo)).toBe('false');
-    expect(git(['rev-parse', 'origin/main'], repo)).toBe(tip);
-    expect(await readdir(join(repo, '.git', 'objects', 'pack'))).toEqual([]);
-    git(['fsck', '--full'], repo);
-  }
-  expect(reports.map((r) => [r.operation, r.poolReused])).toEqual([
-    ['fetch', false],
-    ['fetch', true],
-  ]);
-  await api.prune();
-  git(['fsck', '--full'], join(root, 'actions-1'));
-});
-
-it('seeds the pool from an unlinked checkout before fetching from the remote', async () => {
-  const { root, source, remote, store } = await fixture();
-  const checkout = join(root, 'plain');
-  git(['clone', '-q', remote, checkout], root);
-  // The remote can no longer serve full history, so only a fetch that negotiates with the checkout's objects succeeds.
-  const blob = git(['rev-parse', 'HEAD:hello.txt'], source);
-  await rm(join(root, 'remote', 'team', 'project.git', 'objects', blob.slice(0, 2), blob.slice(2)));
-  const api = createGitDedup({ cwd: checkout, env: testEnv(root, store) });
-  expect(await api.run(['fetch', '-q', 'origin'])).toBe(0);
-  await expectAlternate(store, join(checkout, '.git'));
-  git(['fsck', '--connectivity-only'], checkout);
-});
-
-it.each([['--depth=1'], ['--deepen', '10'], ['--unshallow'], ['--filter=blob:none'], ['--filter=tree:0']])(
-  'upgrades existing shallow fetches with %j and tolerates deepen/unshallow on full history',
-  async (...flags) => {
-    const { root, remote, store } = await historyFixture();
-    const repo = join(root, 'existing');
-    git(['clone', '-q', '--depth=1', remote, repo], root);
-    const api = createGitDedup({ cwd: repo, env: testEnv(root, store) });
-    expect(await api.run(['fetch', '-q', ...flags, 'origin'])).toBe(0);
-    await expectAlternate(store, join(repo, '.git'));
-    expect(git(['rev-parse', '--is-shallow-repository'], repo)).toBe('false');
-    expect(git(['rev-list', '--count', 'HEAD'], repo)).toBe('3');
-    expect(await api.run(['fetch', '-q', '--deepen=50', 'origin'])).toBe(0);
-    expect(await api.run(['fetch', '-q', '--unshallow', 'origin'])).toBe(0);
-    git(['fsck', '--full'], repo);
-  },
-);
-
-it.skipIf(process.platform === 'win32')(
-  'carries checkout-local authentication and command config into pool fetches',
-  async () => {
-    const { root, remote, store } = await historyFixture();
-    const repo = join(root, 'authenticated');
-    git(['init', repo], root);
-    git(['remote', 'add', 'origin', remote], repo);
-    git(['config', 'http.extraHeader', 'x-test-auth: test-token'], repo);
-    const realGit = spawnSync('which', ['git'], { encoding: 'utf8' }).stdout.trim();
-    const wrapper = join(root, 'git-auth-check');
-    const marker = join(root, 'auth-forwarded');
-    await writeFile(
-      wrapper,
-      `#!${process.execPath}
-const {spawnSync} = require('node:child_process');
-const {writeFileSync} = require('node:fs');
-const args = process.argv.slice(2);
-if (args.includes('fetch') && args.includes(${JSON.stringify(remote)})) {
-  const config = {};
-  for (let i=0;i<Number(process.env.GIT_CONFIG_COUNT || 0);i++) config[process.env['GIT_CONFIG_KEY_'+i]] = process.env['GIT_CONFIG_VALUE_'+i];
-  if(config['http.extraheader'] !== 'x-test-auth: test-token' || config['protocol.version'] !== '2') process.exit(99);
-  writeFileSync(${JSON.stringify(marker)},'forwarded');
-}
-const result = spawnSync(${JSON.stringify(realGit)},args,{stdio:'inherit',env:process.env});
-process.exit(result.status ?? 1);
-`,
-    );
-    await chmod(wrapper, 0o755);
-    const api = createGitDedup({ cwd: repo, env: testEnv(root, store), gitPath: wrapper });
-    expect(
-      await api.run([
-        '-c',
-        'protocol.version=2',
-        'fetch',
-        '--depth=1',
-        'origin',
-        '+refs/heads/main:refs/remotes/origin/main',
-      ]),
-    ).toBe(0);
-    expect(await readFile(marker, 'utf8')).toBe('forwarded');
-    await expectAlternate(store, join(repo, '.git'));
-  },
-);
-
-it('does not interpret a -C directory operand beginning with -c as command configuration', async () => {
-  const { root, remote, store } = await historyFixture();
-  const repo = join(root, '-checkout');
-  git(['init', repo], root);
-  git(['remote', 'add', 'origin', remote], repo);
-  const api = createGitDedup({ cwd: root, env: testEnv(root, store) });
-  expect(await api.run(['-C', '-checkout', 'fetch', '-q', '--depth=1', 'origin'])).toBe(0);
-  await expectAlternate(store, join(repo, '.git'));
 });
