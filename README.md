@@ -88,7 +88,7 @@ Your checkouts read their history from the shared store. Deleting it breaks ever
 | [test](test)                                                                | Behavior suites that drive the binary                                                                |
 | [Website](https://github.com/bhouston/git-dedup/tree/main/packages/website) | Docusaurus documentation and project site; not published to npm                                      |
 
-The `git-dedup-core` npm package (the earlier TypeScript library) is no longer maintained. Scripts can run `git-dedup` as a command instead. After installing, the [agent setup guide](https://git-dedup.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `git-dedup` explicitly.
+After installing, the [agent setup guide](https://git-dedup.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `git-dedup` explicitly.
 
 ## Development
 

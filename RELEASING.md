@@ -25,12 +25,6 @@ After the repository rename, check the trusted publisher for the npm package bef
 
 Publishing is not atomic. If the workflow fails part way, compare the npm version, the `v<version>` Git tag, the GitHub Release, and the run log. If npm publishing succeeded but the GitHub Release failed, create the release from the existing tag; never republish an existing npm version. If only the GoReleaser step failed, check out the tag and run `goreleaser release --clean` with `GITHUB_TOKEN` set; it appends to the existing release.
 
-`git-dedup-core`, the earlier TypeScript library, is no longer published. To point its users at the CLI, run once from an authenticated npm account:
-
-```sh
-npm deprecate git-dedup-core "git-dedup-core is no longer maintained; run the git-dedup CLI instead"
-```
-
 ## Native distribution channels
 
 `.goreleaser.yaml` builds the archives, packages, and manifests. CI runs it in snapshot mode on every change (the `native packages` job) and installs each Linux package in its distribution. The release workflow runs it after semantic-release; `release.mode: append` adds the artifacts to the GitHub Release.
