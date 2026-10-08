@@ -124,6 +124,17 @@ func (c *Client) fetchCheckout(args []string) (code int, handled bool, err error
 		if poolReused && !quiet {
 			c.warn("git-dedup: reused object pool\n")
 		}
+		// Seed the pool from local history first so the network fetch negotiates with it. Otherwise a
+		// checkout not yet in the store re-downloads every branch and tag, which for a large remote can
+		// outlast the caller and leave nothing behind for the next attempt. A shallow checkout would
+		// make the pool shallow, and a partial clone cannot serve its objects, so seeding is best effort.
+		if !shallow {
+			if pool, err := c.ensurePool(root); err == nil {
+				if tips, err := c.consumerTips(c.cwd); err == nil {
+					_ = c.pinConsumer(pool, c.cwd, commonGitdir, tips)
+				}
+			}
+		}
 		pool, fetchErr := network.fetchRemote(root, url, key, progress, quiet)
 		if fetchErr != nil {
 			c.fallback(args, "object pool unavailable"+gitFailure(fetchErr))
