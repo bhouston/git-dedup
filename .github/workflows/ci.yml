@@ -23,7 +23,7 @@ jobs:
       fail-fast: false
       matrix:
         os: [macos-latest, ubuntu-latest, windows-latest]
-        node: [22, 26]
+        node: [22, 24, 26]
         include:
           - os: ubuntu-24.04-arm
             node: 26
