@@ -328,7 +328,7 @@ it('skips an unchanged store add rerun without adding pins or refreshing the rem
   expect((await api.add(consumer)).added).toBe(1);
   const pool = join(store, 'pool.git');
   const pins = git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/gitx/consumers'], pool);
-  const packNames = (await readdir(join(consumer, '.git', 'objects', 'pack'))).toSorted();
+  const packNames = (await readdir(join(consumer, '.git', 'objects', 'pack'))).sort();
   const output = vi.spyOn(process.stderr, 'write');
   try {
     expect(await api.add(consumer)).toMatchObject({
@@ -344,7 +344,7 @@ it('skips an unchanged store add rerun without adding pins or refreshing the rem
     output.mockRestore();
   }
   expect(git(['for-each-ref', '--format=%(refname) %(objectname)', 'refs/gitx/consumers'], pool)).toBe(pins);
-  expect((await readdir(join(consumer, '.git', 'objects', 'pack'))).toSorted()).toEqual(packNames);
+  expect((await readdir(join(consumer, '.git', 'objects', 'pack'))).sort()).toEqual(packNames);
   git(['fsck', '--full'], consumer);
 });
 
