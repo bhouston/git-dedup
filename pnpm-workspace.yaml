@@ -8,3 +8,15 @@ minimumReleaseAgeExclude:
   - yargs-file-commands
   - '@clidoc/core@1.1.0'
   - '@clidoc/yargs@1.1.0'
+overrides:
+  serialize-javascript: '>=7.0.3'
+  source-map-js: '>=1.2.2'
+  tinypool: '>=2.1.2'
+  shell-quote: '>=1.11.0'
+  handlebars: '>=4.7.10'
+  follow-redirects: '>=1.16.2'
+  vite: '>=7.3.7'
+  launch-editor: '>=2.14.2'
+  body-parser: '>=1.20.9'
+  joi: '>=17.13.9'
+  undici: '^7.30.1'
