@@ -12,7 +12,7 @@ for (const [message, expected] of [
   ['fix: change API\n\nBREAKING CHANGE: remove legacy arguments', 'major'],
   ['chore: update workflow', null],
 ]) {
-  test(`release analysis: ${message.split('\n')[0]}`, async () => {
+  void test(`release analysis: ${message.split('\n')[0]}`, async () => {
     const actual = await analyzeCommits(releaseConfig.plugins[0][1], {
       cwd: process.cwd(),
       commits: [{ hash: 'test', message }],
@@ -22,7 +22,7 @@ for (const [message, expected] of [
   });
 }
 
-test('release branch and publication order', () => {
+void test('release branch and publication order', () => {
   assert.deepEqual(releaseConfig.branches, ['main']);
   assert.deepEqual(releasePackages, ['packages/cli']);
   const published = releaseConfig.plugins
@@ -32,7 +32,7 @@ test('release branch and publication order', () => {
   assert.ok(!published.includes('packages/website'));
 });
 
-test('release is manual and runs CI before publishing', () => {
+void test('release is manual and runs CI before publishing', () => {
   const workflow = readFileSync('.github/workflows/release.yml', 'utf8');
   assert.match(workflow, /workflow_dispatch:/);
   assert.doesNotMatch(workflow, /\n  push:/);
@@ -45,12 +45,12 @@ test('release is manual and runs CI before publishing', () => {
   assert.match(workflow, /setup-go/);
 });
 
-test('the npm package builds every native target with the released version', () => {
+void test('the npm package builds every native target with the released version', () => {
   const prepare = releaseConfig.plugins.find((plugin) => typeof plugin === 'object' && !Array.isArray(plugin)).prepare;
   assert.match(String(prepare), /buildNative\(\{ all: true, version: nextRelease\.version \}\)/);
 });
 
-test('PR policy requires main and a linked issue', () => {
+void test('PR policy requires main and a linked issue', () => {
   assert.doesNotThrow(() => checkPullRequest({ base: { ref: 'main' }, body: 'Closes #42' }));
   assert.throws(() => checkPullRequest({ base: { ref: 'other' }, body: 'Closes #42' }));
   assert.throws(() => checkPullRequest({ base: { ref: 'main' }, body: 'No issue' }));
