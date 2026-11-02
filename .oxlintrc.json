@@ -10,6 +10,9 @@
     "**/.vitepress/cache/**",
     "coverage/**"
   ],
+  "options": {
+    "typeAware": true
+  },
   "categories": {
     "correctness": "error",
     "suspicious": "warn"
