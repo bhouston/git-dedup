@@ -148,6 +148,11 @@ func (c *Client) adopt(repo, gitdir string, quiet bool, stage *string, record fu
 				return nil
 			}
 		}
+		localObjects, poolObjects := filepath.Join(commonGitdir, "objects"), filepath.Join(pool, "objects")
+		var localBefore, poolBefore int64
+		if c.options.OnStorageReport != nil {
+			localBefore, poolBefore = directorySize(localObjects), directorySize(poolObjects)
+		}
 		progress(repo, "packing local objects")
 		repack := []string{"-c", "repack.writeBitmaps=false", "repack", "-a", "-d", "-l"}
 		// Gather loose local objects before adding an alternate; afterwards Git may
@@ -207,6 +212,8 @@ func (c *Client) adopt(repo, gitdir string, quiet bool, stage *string, record fu
 				BeforeUniqueBytes:   &beforeUniqueBytes,
 				AfterUniqueBytes:    &afterUniqueBytes,
 				EstimatedSavedBytes: max(0, beforeUniqueBytes-afterUniqueBytes),
+				StoreAddedBytes:     max(0, directorySize(poolObjects)-poolBefore),
+				LocalRemovedBytes:   max(0, localBefore-directorySize(localObjects)),
 			})
 		}
 		if refreshErr != nil {

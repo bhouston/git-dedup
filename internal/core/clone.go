@@ -47,6 +47,7 @@ func (c *Client) clone(args []string, effectiveCwd string) (code int, handled bo
 	// Lock only the pool writes. Only store prune deletes pool objects, so git clone can
 	// read the pool while other processes fetch or repack, and the new tips are pinned right after.
 	poolReused := false
+	var storeAddedBytes int64
 	var pool string
 	var fetchErr error
 	// Like git clone: progress on a terminal or with --progress, never with -q/--quiet.
@@ -56,12 +57,18 @@ func (c *Client) clone(args []string, effectiveCwd string) (code int, handled bo
 	// store prune refuses while the marker exists. A failed pin leaves it behind.
 	marker := filepath.Join(root, "clones", randomUUID()+".json")
 	lockErr := c.withLock(root, func() error {
+		poolObjects := filepath.Join(poolPath(root), "objects")
+		var poolBefore int64
 		if c.options.OnStorageReport != nil {
 			poolReused = isPresent(poolPath(root))
+			poolBefore = directorySize(poolObjects)
 		}
 		pool, fetchErr = c.fetchRemote(root, parsed.remote, key, progress, quiet)
 		if fetchErr != nil {
 			return nil
+		}
+		if c.options.OnStorageReport != nil {
+			storeAddedBytes = max(0, directorySize(poolObjects)-poolBefore)
 		}
 		if err := os.MkdirAll(filepath.Dir(marker), 0o777); err != nil {
 			return err
@@ -105,7 +112,7 @@ func (c *Client) clone(args []string, effectiveCwd string) (code int, handled bo
 	if err != nil {
 		return 0, true, err
 	}
-	c.emitStorageReport(StorageReport{Operation: "clone", Repository: destination, PoolReused: poolReused})
+	c.emitStorageReport(StorageReport{Operation: "clone", Repository: destination, PoolReused: poolReused, StoreAddedBytes: storeAddedBytes})
 	if !parsed.recurse {
 		return 0, true, nil
 	}

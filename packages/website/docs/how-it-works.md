@@ -18,6 +18,8 @@ The checkout depends on the pool. See the [storage guide](safety.md) before movi
 
 ## Storage reports
 
+After a clone or `store add`, git-dedup prints one summary line to stderr, such as `git-dedup: 2.1GB consolidated into the shared store, 4.0GB pruned from local checkouts`. It compares the file bytes under `objects/` before and after, so hard-linked files can make the pruned figure larger than the disk space reclaimed. `-q` suppresses it.
+
 `git-dedup --stats clone` and `git-dedup store add --stats` print a storage report to stderr. The report shows whether the pool already existed. Adoption reports compare private pack bytes before and after adoption. Clone reports identify use of Git alternates; they do not estimate disk savings.
 
 Measurement is opt-in and scans local `.pack`, `.idx`, and `.rev` file metadata, without traversing Git objects. It excludes loose objects. These are logical file-size estimates, not measured disk blocks reclaimed. The first use populates the pool and can increase total disk use. Plain Git fallback does not print a report.

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 
 	"github.com/bhouston/git-dedup/internal/core"
 	"github.com/bhouston/git-dedup/internal/discover"
@@ -74,14 +75,34 @@ func (a *app) main(args []string) (int, error) {
 }
 
 func (a *app) runGit(args []string, stats bool) (int, error) {
-	if !stats {
-		return core.New(core.Options{}).Run(args)
-	}
 	var reports []core.StorageReport
 	client := core.New(core.Options{OnStorageReport: func(report core.StorageReport) { reports = append(reports, report) }})
 	code, err := client.Run(args)
-	a.printStorageReports(reports)
+	if stats {
+		a.printStorageReports(reports)
+	}
+	if !slices.Contains(args, "-q") && !slices.Contains(args, "--quiet") {
+		a.printStorageSummary(reports)
+	}
 	return code, err
+}
+
+// printStorageSummary prints one line showing what the shared store took on.
+func (a *app) printStorageSummary(reports []core.StorageReport) {
+	if len(reports) == 0 {
+		return
+	}
+	var added, removed int64
+	for _, report := range reports {
+		added += report.StoreAddedBytes
+		removed += report.LocalRemovedBytes
+	}
+	if reports[0].Operation == "add" {
+		fmt.Fprintf(a.stderr, "git-dedup: %s consolidated into the shared store, %s pruned from local checkouts\n",
+			humanizeBytes(added), humanizeBytes(removed))
+	} else {
+		fmt.Fprintf(a.stderr, "git-dedup: %s fetched into the shared store\n", humanizeBytes(added))
+	}
 }
 
 // printStorageReports reports logical pack bytes; no filesystem allocation estimate is available.
@@ -164,11 +185,7 @@ func (a *app) storeAdd(command *cli.Command) (int, error) {
 	}
 	path := command.StringArg("path")
 	var reports []core.StorageReport
-	options := core.Options{}
-	if stats {
-		options.OnStorageReport = func(report core.StorageReport) { reports = append(reports, report) }
-	}
-	client := core.New(options)
+	client := core.New(core.Options{OnStorageReport: func(report core.StorageReport) { reports = append(reports, report) }})
 	if !all {
 		result, err := client.Add(path, false)
 		if err != nil {
@@ -179,6 +196,7 @@ func (a *app) storeAdd(command *cli.Command) (int, error) {
 		if stats {
 			a.printStorageReports(reports)
 		}
+		a.printStorageSummary(reports)
 		return boolCode(result.Failed > 0), nil
 	}
 	git, err := client.GitPath()
@@ -230,6 +248,7 @@ func (a *app) storeAdd(command *cli.Command) (int, error) {
 	if stats {
 		a.printStorageReports(reports)
 	}
+	a.printStorageSummary(reports)
 	return boolCode(failed > 0), nil
 }
 

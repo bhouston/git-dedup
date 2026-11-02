@@ -33,6 +33,9 @@ type StorageReport struct {
 	// Logical bytes in private pack files before/after checkout adoption. Loose objects are excluded.
 	BeforeUniqueBytes *int64 `json:"beforeUniqueBytes,omitempty"`
 	AfterUniqueBytes  *int64 `json:"afterUniqueBytes,omitempty"`
+	// Growth of the shared pool's objects and shrinkage of the checkout's objects, in file bytes.
+	StoreAddedBytes   int64 `json:"storeAddedBytes"`
+	LocalRemovedBytes int64 `json:"localRemovedBytes"`
 }
 
 // Client runs git-dedup operations for one working directory and environment.
