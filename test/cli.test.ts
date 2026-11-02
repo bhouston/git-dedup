@@ -301,6 +301,7 @@ describe('git-dedup CLI', () => {
     const plain = await cli.run(['clone', remote, 'plain'], options);
     expect(plain).toSucceed();
     expect(plain.stderr).not.toContain('objects borrowed through Git alternates');
+    expect(plain).toHaveStderr(/git-dedup: [\d.]+[kMGT]?B fetched into the shared store/);
 
     const native = await commandLine({ command: ['git'], name: 'git' }).run(['clone', remote, 'adopt'], options);
     expect(native).toSucceed();
@@ -308,6 +309,7 @@ describe('git-dedup CLI', () => {
     expect(adoption).toSucceed();
     expect(adoption).toHaveStdout(/Added 1 repository/);
     expect(adoption).toHaveStderr(/private packs .* -> .*/);
+    expect(adoption).toHaveStderr(/[\d.]+[kMGT]?B consolidated into the shared store, [\d.]+[kMGT]?B pruned/);
     expect(adoption).toHaveStderr(/estimated private pack reduction [\d.]+[kMGT]?B; logical pack bytes only/);
   });
 
