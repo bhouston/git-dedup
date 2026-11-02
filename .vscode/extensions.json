@@ -1,0 +1,10 @@
+{
+  "recommendations": [
+    "oxc.oxc-vscode",
+    "typescriptteam.native-preview",
+    "vitest.explorer",
+    "github.vscode-github-actions",
+    "golang.go"
+  ],
+  "unwantedRecommendations": ["esbenp.prettier-vscode", "dbaeumer.vscode-eslint", "biomejs.biome"]
+}
