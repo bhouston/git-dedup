@@ -55,7 +55,9 @@ gh workflow run release.yml --ref main
 gh workflow run release.yml --ref main -f dry_run=true
 ```
 
-The workflow requires `main`, reruns CI on the selected commit, and uses semantic-release to select the version from Conventional Commits. It builds the native binaries with that version, publishes `git-dedup` through npm trusted publishing, and attaches archives and Linux packages to the GitHub Release. After a release publishes, the same run deploys the documentation site from the release tag. See [RELEASING.md](RELEASING.md) for one-time activation and recovery.
+The workflow requires `main`, reruns CI on the selected commit, and uses semantic-release to select the version from Conventional Commits. It builds the native binaries with that version, publishes `git-dedup` through npm trusted publishing, and attaches archives and Linux packages to the GitHub Release. After a release publishes, the same run deploys the documentation site from the release tag.
+
+See [RELEASING.md](RELEASING.md) for release setup, recovery, and repository specifics.
 
 ## Security
 
