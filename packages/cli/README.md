@@ -1,16 +1,35 @@
-# git-dedup CLI
+<p align="center">
+  <a href="https://git-dedup.ben3d.ca" target="_blank" rel="noopener noreferrer">
+    <img alt="git-dedup logo" src="https://raw.githubusercontent.com/bhouston/git-dedup/main/packages/website/static/img/icon-512.png" height="96">
+  </a>
+</p>
+<br/>
+<p align="center">
+  <a href="https://npmjs.com/package/git-dedup"><img src="https://img.shields.io/npm/v/git-dedup.svg" alt="npm package"></a>
+  <a href="https://www.npmtrends.com/git-dedup"><img src="https://img.shields.io/npm/dw/git-dedup.svg" alt="npm downloads"></a>
+  <a href="https://codecov.io/gh/bhouston/git-dedup"><img src="https://codecov.io/gh/bhouston/git-dedup/branch/main/graph/badge.svg" alt="coverage"></a>
+  <a href="https://discord.gg/fwupDN493R"><img src="https://img.shields.io/badge/chat-discord-blue?style=flat&logo=discord" alt="discord chat"></a>
+  <a href="https://git-dedup.ben3d.ca"><img src="https://img.shields.io/badge/docs-read-blue?style=flat" alt="documentation"></a>
+</p>
+<br/>
 
-[![npm version](https://img.shields.io/npm/v/git-dedup.svg)](https://www.npmjs.com/package/git-dedup)
-[![npm downloads](https://img.shields.io/npm/dm/git-dedup.svg)](https://www.npmjs.com/package/git-dedup)
-[![CI](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/bhouston/git-dedup/branch/main/graph/badge.svg)](https://codecov.io/gh/bhouston/git-dedup)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-git--dedup-blue)](https://git-dedup.ben3d.ca/)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
+# git-dedup
 
-**Faster checkouts, a fraction of the disk space.**
+> A git wrapper with a shared object store: faster checkouts, less disk.
 
-git-dedup is a wrapper around `git` built for fleets of coding agents. It forwards ordinary Git commands unchanged and automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again. Large checkouts are 6x faster, and Git data takes 70% less disk.
+- 🚀 6x Faster Large Checkouts
+- 💾 70% Less Git Data on Disk
+- 🔁 Clones, Worktrees, Submodules
+- 🔌 Drop-In Git Wrapper
+- 🖥️ Native Binary, Every Platform
+
+git-dedup is a wrapper around `git` built for fleets of coding agents. It forwards ordinary Git commands unchanged and automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again. Checkouts are normal Git repositories, so `git`, your editor, and your agents work as before.
+
+The 6x figure comes from large checkouts dropping from over a minute to about 10 seconds. The 70% figure comes from 117 checkouts, where Git data dropped from 35.5 GB to 11.1 GB.
+
+[Read the Docs to Learn More](https://git-dedup.ben3d.ca).
+
+## Quick Start
 
 ```sh
 npm install --global git-dedup
@@ -24,7 +43,7 @@ git-dedup store add ./my-existing-repo
 
 That's it. git-dedup automatically consolidates the new or existing project's history into a shared store in `~/.git-dedup` or if its history already existed there, it reuses it automatically.
 
-**[Documentation](https://git-dedup.ben3d.ca/) · [Source](https://github.com/bhouston/git-dedup) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
+**[Source](https://github.com/bhouston/git-dedup) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
 
 ## Installation
 
@@ -128,14 +147,16 @@ git-dedup docgen --format markdown --output git-dedup-commands.md
 
 The [agent setup guide](https://git-dedup.ben3d.ca/docs/agents) has copyable instructions for `AGENTS.md` and `CLAUDE.md` after a global installation.
 
-## Contributing
+See the [repository](https://github.com/bhouston/git-dedup#readme) for the wider picture and [GitHub Releases](https://github.com/bhouston/git-dedup/releases) for release notes.
 
-See [CONTRIBUTING.md](https://github.com/bhouston/git-dedup/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/git-dedup/releases) for release notes.
+## Contribution
+
+See [Contributing Guide](https://github.com/bhouston/git-dedup/blob/main/CONTRIBUTING.md).
 
 ## License
 
-[MIT](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
+MIT
 
 ## Author
 
-[Ben Houston](https://ben3d.ca)
+[Ben Houston](https://ben3d.ca), Sponsored by [Land of Assets](https://landofassets.com).
