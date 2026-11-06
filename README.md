@@ -114,7 +114,11 @@ pnpm test:proof
 
 Development needs Go (the version in `go.mod`), Node.js, and pnpm. `pnpm build` compiles the binary for this machine. `pnpm check` runs Oxlint, Oxfmt, `go vet`, the Vitest behavior suites against the binary, workflow tests, npm package checks, and the documentation build; `go test ./...` runs the Go unit tests. The proof script creates temporary loopback Git remotes and verifies that concurrent clones share one object pool and remain valid after pool maintenance.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, [RELEASING.md](RELEASING.md) for release setup, and [GitHub Releases](https://github.com/bhouston/git-dedup/releases) for release notes.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow.
+
+## Releases
+
+See [RELEASING.md](RELEASING.md) for how releases are published and [GitHub Releases](https://github.com/bhouston/git-dedup/releases) for changes.
 
 ## Contribution
 
