@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://git-dedup.ben3d.ca" target="_blank" rel="noopener noreferrer">
-    <img alt="git-dedup logo" src="https://raw.githubusercontent.com/bhouston/git-dedup/main/packages/website/static/img/icon-512.png" height="96">
+    <img alt="git-dedup logo" src="https://raw.githubusercontent.com/bhouston/git-dedup/main/packages/docs/static/img/icon-512.png" height="96">
   </a>
 </p>
 <br/>
@@ -94,12 +94,12 @@ Your checkouts read their history from the shared store. Deleting it breaks ever
 
 ## Repository layout
 
-| Path                                                                        | Contents                                                                                             |
-| --------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| [cmd/git-dedup](cmd/git-dedup), [internal](internal)                        | The Go implementation                                                                                |
-| [packages/cli](packages/cli)                                                | The [git-dedup](https://www.npmjs.com/package/git-dedup) npm package: a launcher and native binaries |
-| [test](test)                                                                | Behavior suites that drive the binary                                                                |
-| [Website](https://github.com/bhouston/git-dedup/tree/main/packages/website) | Docusaurus documentation and project site; not published to npm                                      |
+| Path                                                                     | Contents                                                                                             |
+| ------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------- |
+| [cmd/git-dedup](cmd/git-dedup), [internal](internal)                     | The Go implementation                                                                                |
+| [packages/cli](packages/cli)                                             | The [git-dedup](https://www.npmjs.com/package/git-dedup) npm package: a launcher and native binaries |
+| [test](test)                                                             | Behavior suites that drive the binary                                                                |
+| [Website](https://github.com/bhouston/git-dedup/tree/main/packages/docs) | Docusaurus documentation and project site; not published to npm                                      |
 
 After installing, the [agent setup guide](https://git-dedup.ben3d.ca/docs/agents) provides instructions to add to `AGENTS.md` or `CLAUDE.md` so agents call `git-dedup` explicitly.
 

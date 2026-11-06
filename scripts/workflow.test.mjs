@@ -29,7 +29,7 @@ void test('release branch and publication order', () => {
     .filter((plugin) => Array.isArray(plugin) && plugin[0] === '@anolilab/semantic-release-pnpm')
     .map(([, options]) => options.pkgRoot);
   assert.deepEqual(published, releasePackages);
-  assert.ok(!published.includes('packages/website'));
+  assert.ok(!published.includes('packages/docs'));
 });
 
 void test('release is manual and runs CI before publishing', () => {

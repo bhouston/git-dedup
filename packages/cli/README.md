@@ -1,6 +1,6 @@
 <p align="center">
   <a href="https://git-dedup.ben3d.ca" target="_blank" rel="noopener noreferrer">
-    <img alt="git-dedup logo" src="https://raw.githubusercontent.com/bhouston/git-dedup/main/packages/website/static/img/icon-512.png" height="96">
+    <img alt="git-dedup logo" src="https://raw.githubusercontent.com/bhouston/git-dedup/main/packages/docs/static/img/icon-512.png" height="96">
   </a>
 </p>
 <br/>

@@ -1,4 +1,4 @@
-# git-dedup website
+# git-dedup docs
 
 Docusaurus documentation and project site for git-dedup.
 
@@ -17,8 +17,8 @@ git-dedup store add ./my-existing-repo
 To work on the site:
 
 ```sh
-pnpm --filter git-dedup-website dev
-pnpm --filter git-dedup-website build
+pnpm --filter git-dedup-docs dev
+pnpm --filter git-dedup-docs build
 ```
 
 The default production URL is `https://git-dedup.ben3d.ca/`. The site is served from the domain root (`baseUrl: /`). Override `SITE_URL` and `BASE_URL` for another host.
