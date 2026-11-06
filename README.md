@@ -1,20 +1,33 @@
+<p align="center">
+  <a href="https://git-dedup.ben3d.ca" target="_blank" rel="noopener noreferrer">
+    <img alt="git-dedup logo" src="https://raw.githubusercontent.com/bhouston/git-dedup/main/packages/website/static/img/icon-512.png" height="96">
+  </a>
+</p>
+<br/>
+<p align="center">
+  <a href="https://npmjs.com/package/git-dedup"><img src="https://img.shields.io/npm/v/git-dedup.svg" alt="npm package"></a>
+  <a href="https://www.npmtrends.com/git-dedup"><img src="https://img.shields.io/npm/dw/git-dedup.svg" alt="npm downloads"></a>
+  <a href="https://codecov.io/gh/bhouston/git-dedup"><img src="https://codecov.io/gh/bhouston/git-dedup/branch/main/graph/badge.svg" alt="coverage"></a>
+  <a href="https://discord.gg/fwupDN493R"><img src="https://img.shields.io/badge/chat-discord-blue?style=flat&logo=discord" alt="discord chat"></a>
+  <a href="https://git-dedup.ben3d.ca"><img src="https://img.shields.io/badge/docs-read-blue?style=flat" alt="documentation"></a>
+</p>
+<br/>
+
 # git-dedup
 
-[![npm version](https://img.shields.io/npm/v/git-dedup.svg)](https://www.npmjs.com/package/git-dedup)
-[![npm downloads](https://img.shields.io/npm/dm/git-dedup.svg)](https://www.npmjs.com/package/git-dedup)
-[![CI](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/bhouston/git-dedup/actions/workflows/ci.yml)
-[![Coverage](https://codecov.io/gh/bhouston/git-dedup/branch/main/graph/badge.svg)](https://codecov.io/gh/bhouston/git-dedup)
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
-[![Documentation](https://img.shields.io/badge/docs-git--dedup-blue)](https://git-dedup.ben3d.ca/)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?logo=discord&logoColor=white)](https://discord.gg/5J5Ur3F6Z2)
+> A git wrapper with a shared object store: faster checkouts, less disk.
 
-**Faster checkouts, a fraction of the disk space.**
+- 🚀 6x Faster Large Checkouts
+- 💾 70% Less Git Data on Disk
+- 🔁 Clones, Worktrees, Submodules
+- 🔌 Drop-In Git Wrapper
+- 🖥️ Native Binary, Every Platform
 
-git-dedup is a wrapper around `git` built for fleets of coding agents. It forwards ordinary Git commands unchanged and automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again.
+git-dedup is a wrapper around `git` built for fleets of coding agents. It forwards ordinary Git commands unchanged and automatically keeps one shared copy of Git history, so every new clone, worktree, and submodule reuses what is already on disk instead of downloading it again. Checkouts are normal Git repositories, so `git`, your editor, and your agents work as before.
 
-- **6x faster checkouts.** Large checkouts drop from over a minute to about 10 seconds.
-- **70% less disk.** Across 117 checkouts, Git data dropped from 35.5 GB to 11.1 GB.
-- **No workflow changes.** Checkouts are normal Git repositories. Use `git`, your editor, and your agents as before.
+The 6x figure comes from large checkouts dropping from over a minute to about 10 seconds. The 70% figure comes from 117 checkouts, where Git data dropped from 35.5 GB to 11.1 GB.
+
+[Read the Docs to Learn More](https://git-dedup.ben3d.ca).
 
 ## Install and use
 
@@ -32,7 +45,7 @@ That's it. git-dedup automatically consolidates the new or existing project's hi
 
 git-dedup is a native binary for macOS, Linux, and Windows on x64 and arm64; it only needs **Git**. The npm package runs the binary for your platform through a small launcher (Node.js 18+). Without Node.js, download an archive, `.deb`, `.rpm`, or `.apk` from [GitHub Releases](https://github.com/bhouston/git-dedup/releases).
 
-**[Documentation](https://git-dedup.ben3d.ca/) · [CLI reference](https://git-dedup.ben3d.ca/docs/cli) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
+**[CLI reference](https://git-dedup.ben3d.ca/docs/cli) · [Agent setup](https://git-dedup.ben3d.ca/docs/agents)**
 
 ## Why I built it
 
@@ -101,16 +114,16 @@ pnpm test:proof
 
 Development needs Go (the version in `go.mod`), Node.js, and pnpm. `pnpm build` compiles the binary for this machine. `pnpm check` runs Oxlint, Oxfmt, `go vet`, the Vitest behavior suites against the binary, workflow tests, npm package checks, and the documentation build; `go test ./...` runs the Go unit tests. The proof script creates temporary loopback Git remotes and verifies that concurrent clones share one object pool and remain valid after pool maintenance.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and [RELEASING.md](RELEASING.md) for release setup.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, [RELEASING.md](RELEASING.md) for release setup, and [GitHub Releases](https://github.com/bhouston/git-dedup/releases) for release notes.
 
-## Contributing
+## Contribution
 
-See [CONTRIBUTING.md](https://github.com/bhouston/git-dedup/blob/main/CONTRIBUTING.md) for the issue, branch, and PR workflow, and [GitHub Releases](https://github.com/bhouston/git-dedup/releases) for release notes.
+See [Contributing Guide](CONTRIBUTING.md).
 
 ## License
 
-[MIT](https://github.com/bhouston/git-dedup/blob/main/LICENSE)
+MIT
 
 ## Author
 
-[Ben Houston](https://ben3d.ca)
+[Ben Houston](https://ben3d.ca), Sponsored by [Land of Assets](https://landofassets.com).
