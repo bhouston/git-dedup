@@ -16,3 +16,4 @@ packages/cli/native/
 # Agent tooling
 .claude/
 .codex/
+.cursor/
