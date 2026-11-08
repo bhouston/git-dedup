@@ -12,3 +12,7 @@ release-artifacts/
 packages/docs/.generated/
 packages/docs/docs/cli/
 packages/cli/native/
+
+# Agent tooling
+.claude/
+.codex/
